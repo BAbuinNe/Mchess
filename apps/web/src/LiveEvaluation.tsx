@@ -20,6 +20,10 @@ function centipawns(result: EngineResult) {
   return result.mate !== null ? Math.sign(result.mate) * (10000 - Math.abs(result.mate) * 100) : result.score ?? 0;
 }
 
+// Lichess's public evaluation-to-win-chance curve keeps a 150 cp change in a
+// won position from being treated like the same change in an equal position.
+function winChance(cp: number) { return 100 / (1 + Math.exp(-0.00368208 * cp)); }
+
 function sacrifice(game: Chess, move: Move) {
   const pieceValue: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
   if (pieceValue[move.piece] < 3) return false;
@@ -31,17 +35,16 @@ function sacrifice(game: Chess, move: Move) {
 export function classify(before: EngineResult, after: EngineResult, move: Move, game: Chess): MoveKind {
   const expected = centipawns(before);
   const actual = -centipawns(after);
-  const loss = expected - actual;
+  const loss = Math.max(0, winChance(expected) - winChance(actual));
   const uci = move.from + move.to + (move.promotion || "");
   const engineBest = uci === before.move;
-  if (expected > 300 && actual < 50 && loss > 250) return "missed-win";
-  if (loss >= 300) return "blunder";
-  if (loss >= 140) return "mistake";
-  if (loss >= 60) return "inaccuracy";
-  if (engineBest && before.depth >= 16 && after.depth >= 16 && sacrifice(game, move) && actual >= expected - 20) return "brilliant";
-  if (engineBest && expected < -100 && actual > expected + 100) return "great";
-  if (engineBest || loss <= 15) return "best";
-  if (loss <= 35) return "excellent";
+  if (before.mate !== null && before.mate > 0 && after.mate === null && loss >= 8) return "missed-win";
+  if (loss >= 25) return "blunder";
+  if (loss >= 12) return "mistake";
+  if (loss >= 5) return "inaccuracy";
+  if (engineBest && before.depth >= 18 && after.depth >= 18 && sacrifice(game, move) && loss <= 1 && winChance(actual) >= 40) return "brilliant";
+  if (engineBest && loss <= 1.5) return "best";
+  if (loss <= 2) return "excellent";
   return "good";
 }
 
@@ -74,9 +77,10 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     void (async () => {
       const entries = await loadOpeningBook().catch(() => []);
       const isBook = isBookLine(history.map(item => item.san), entries);
-      const before = await engine().search(beforeFen, 20, 350);
-      const after = await engine().search(afterFen, 20, 350);
+      const before = await engine().search(beforeFen, 20, 650);
+      const after = await engine().search(afterFen, 20, 650);
       if (currentGeneration !== generation.current) return;
+      if ((before.score === null && before.mate === null) || (after.score === null && after.mate === null) || Math.min(before.depth, after.depth) < 10) return;
       const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before, after, move, new Chess(afterFen)), san: move.san, depth: Math.min(before.depth, after.depth), moveNumber: history.length };
       setHistory(previous => ({ ...previous, [result.moveNumber]: result }));
       setValue(previous => previous && previous.moveNumber > result.moveNumber ? previous : result);

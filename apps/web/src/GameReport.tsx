@@ -37,16 +37,18 @@ export default function GameReport({ pgn }: { pgn: string }) {
     void (async () => {
       const entries = await loadOpeningBook().catch(() => []);
       const walk = new Chess();
-      let before = await engine().search(walk.fen(), 20, 300);
+      let before = await engine().search(walk.fen(), 20, 650);
       for (let index = 0; index < history.length; index++) {
         if (!active) return;
         const move = walk.move(history[index]);
-        const after = await engine().search(walk.fen(), 20, 300);
+        const after = await engine().search(walk.fen(), 20, 650);
         if (!active) return;
         const played = history.slice(0, index + 1).map(item => item.san);
         const isBook = isBookLine(played, entries);
-        const kind = isBook ? "book" : classify(before, after, move, walk);
-        setEvaluated(previous => ({ ...previous, [index + 1]: kind }));
+        if (isBook || (before.score !== null || before.mate !== null) && (after.score !== null || after.mate !== null) && Math.min(before.depth, after.depth) >= 10) {
+          const kind = isBook ? "book" : classify(before, after, move, walk);
+          setEvaluated(previous => ({ ...previous, [index + 1]: kind }));
+        }
         setProgress(index + 1);
         before = after;
       }
