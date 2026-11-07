@@ -44,15 +44,21 @@ const exercises: Exercise[] = [
 ];
 
 const key = "mchess.solvedExercises";
+const attemptsKey = "mchess.exerciseAttempts";
+function loadAttempts(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem(attemptsKey) || "{}") as Record<string, number>; }
+  catch { return {}; }
+}
 function loadSolved(): string[] {
   try { return JSON.parse(localStorage.getItem(key) || "[]") as string[]; }
   catch { return []; }
 }
 
 export default function Training({ lesson = false }: { lesson?: boolean }) {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(() => Math.max(0, Math.min(exercises.length - 1, Number(localStorage.getItem("mchess.trainingIndex")) || 0)));
   const [solved, setSolved] = useState<string[]>(loadSolved);
-  const [hint, setHint] = useState(false);
+  const [attempts, setAttempts] = useState<Record<string, number>>(loadAttempts);
+  const [hint, setHint] = useState(0);
   const [feedback, setFeedback] = useState("");
   const [completedFen, setCompletedFen] = useState<string | null>(null);
   const item = exercises[index];
@@ -60,13 +66,19 @@ export default function Training({ lesson = false }: { lesson?: boolean }) {
 
   function select(next: number) {
     setIndex(next);
-    setHint(false);
+    localStorage.setItem("mchess.trainingIndex", String(next));
+    setHint(0);
     setFeedback("");
     setCompletedFen(null);
   }
 
   function attempt(from: Square, to: Square, promotion?: string) {
     if (done) return;
+    setAttempts(previous => {
+      const next = { ...previous, [item.id]: (previous[item.id] || 0) + 1 };
+      localStorage.setItem(attemptsKey, JSON.stringify(next));
+      return next;
+    });
     if (from !== item.from || to !== item.to || (item.id === "promotion" && promotion !== "q")) {
       setFeedback("Ход легален, но задачу не решает. Попробуйте ещё раз.");
       return;
@@ -89,9 +101,9 @@ export default function Training({ lesson = false }: { lesson?: boolean }) {
       <div className="card training-intro"><span className="eyebrow">{item.theme.toUpperCase()} · {index + 1} ИЗ {exercises.length}</span><h2>{item.title}</h2><p>{lesson ? "Изучите позицию и сделайте ход белыми на доске." : "Ход белых. Найдите решение на доске."}</p></div>
       <ChessBoard fen={completedFen ?? item.fen} onMove={attempt} side="w" />
       {feedback && <div className={"training-feedback " + (done ? "success" : "")} role="status">{feedback}</div>}
-      {hint && !done && <div className="card"><strong>Подсказка</strong><p>{item.hint}</p></div>}
-      <div className="quick-actions"><button onClick={() => setHint(true)} disabled={done}>♧ Подсказка</button><button onClick={() => select((index + 1) % exercises.length)}>{done ? "Следующая задача →" : "Другая задача →"}</button></div>
-      <p className="training-progress">Решено: {solved.length} из {exercises.length}. Прогресс сохраняется на устройстве.</p>
+      {hint > 0 && !done && <div className="card"><strong>Подсказка {hint} из 3</strong><p>{hint === 1 ? item.hint : hint === 2 ? `Целевое поле — ${item.to}.` : `Проверьте ход ${item.from} → ${item.to}.`}</p></div>}
+      <div className="quick-actions"><button onClick={() => setHint(value => Math.min(3, value + 1))} disabled={done || hint === 3}>♧ Подсказка</button><button onClick={() => select((index + 1) % exercises.length)}>{done ? "Следующая задача →" : "Другая задача →"}</button></div>
+      <p className="training-progress">Решено: {solved.length} из {exercises.length} · попыток в этой задаче: {attempts[item.id] || 0}. Прогресс сохраняется на устройстве.</p>
     </section>
   );
 }
