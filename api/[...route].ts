@@ -32,7 +32,7 @@ async function update(change: (data: Data) => { status: number; body: unknown; d
       await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(etag ? { ifMatch: etag } : {}) });
       return result;
     } catch (error) {
-      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) continue;
+      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) { console.error("Blob retry", attempt, Boolean(etag), error instanceof Error ? error.message : String(error)); continue; }
       throw error;
     }
   }
