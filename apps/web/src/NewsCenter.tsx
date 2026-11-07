@@ -48,6 +48,10 @@ export default function NewsCenter({ apiUrl, introVisible }: { apiUrl: string; i
       socket.onclose = () => { if (active) retry = window.setTimeout(connect, 5000); };
     };
     void load();
+    if (apiUrl.includes(".vercel.app")) {
+      const poll = window.setInterval(() => void load(), 30000);
+      return () => { active = false; window.clearInterval(poll); };
+    }
     connect();
     return () => { active = false; socket?.close(); window.clearTimeout(retry); };
   }, [apiUrl]);
@@ -77,3 +81,4 @@ export default function NewsCenter({ apiUrl, introVisible }: { apiUrl: string; i
     </div></div>}
   </>;
 }
+

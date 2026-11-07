@@ -40,7 +40,7 @@ type OnlineState = {
 };
 type Session = { roomId: string; seat: Seat; seatToken: string };
 
-const DEFAULT_API = import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? "" : window.location.port === "5173" ? `${window.location.protocol}//${window.location.hostname}:3001` : window.location.origin);
+const DEFAULT_API = import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? "https://mchess-one.vercel.app" : window.location.port === "5173" ? `${window.location.protocol}//${window.location.hostname}:3001` : window.location.origin);
 const botLevels = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2400, 2800];
 const coaches = [
   { name: "Магнус Карлсен", role: "Позиция и эндшпиль", image: "/assets/coaches/magnus-portrait.png" },
@@ -88,6 +88,7 @@ export default function App() {
   const [moveKinds, setMoveKinds] = useState<Record<number, MoveKind>>({});
   const [pgnInput, setPgnInput] = useState("");
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem("mchess.apiUrl") || DEFAULT_API);
+  const hostedApi = apiUrl.includes(".vercel.app");
   const [guestToken, setGuestToken] = useState(() => localStorage.getItem("mchess.guestToken") || "");
   const [guest, setGuest] = useState<GuestProfile | null>(null);
   const [leaderboard, setLeaderboard] = useState<GuestProfile[]>([]);
@@ -254,6 +255,24 @@ export default function App() {
 
   useEffect(() => {
     if (!session || !validApi(apiUrl)) return;
+    if (hostedApi) {
+      let active = true;
+      const refresh = async () => {
+        try {
+          const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId), { cache: "no-store" });
+          if (!response.ok) throw new Error("room_unavailable");
+          const state = await response.json() as OnlineState;
+          if (!active) return;
+          if (state.moves.length > (onlineRef.current?.moves.length ?? state.moves.length)) playMoveSound();
+          onlineRef.current = state;
+          setOnline(state);
+          setConnected(true);
+        } catch { if (active) setConnected(false); }
+      };
+      void refresh();
+      const interval = window.setInterval(() => void refresh(), 1200);
+      return () => { active = false; window.clearInterval(interval); };
+    }
     const socket = new WebSocket(apiUrl.replace(/^http/, "ws") + "/ws/rooms/" + session.roomId + "?token=" + encodeURIComponent(session.seatToken));
     socketRef.current = socket;
     socket.onopen = () => setConnected(true);
@@ -270,7 +289,19 @@ export default function App() {
       else setNotice("Ход не принят сервером: " + message.error);
     };
     return () => { socket.close(); if (socketRef.current === socket) socketRef.current = null; };
-  }, [session, apiUrl, coach]);
+  }, [session, apiUrl, coach, hostedApi]);
+
+  async function hostedAction(message: Record<string, unknown>) {
+    if (!session) return;
+    try {
+      const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId) + "/action?token=" + encodeURIComponent(session.seatToken), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(message) });
+      const data = await response.json() as OnlineState | { error: string };
+      if (!response.ok || !("type" in data) || data.type !== "state") throw new Error("error" in data ? data.error : "server_error");
+      onlineRef.current = data;
+      setOnline(data);
+      if (message.type === "move") playMoveSound();
+    } catch (error) { setNotice("Ход не принят сервером: " + (error instanceof Error ? error.message : "ошибка сети")); }
+  }
 
   useEffect(() => {
     if (mode !== "bot" || local.turn() !== "b" || local.isGameOver()) return;
@@ -465,7 +496,9 @@ export default function App() {
   function move(from: Square, to: Square, promotion?: string) {
     if (mode === "online") {
       if (!connected || !session || online?.turn !== session.seat || online?.result) return;
-      socketRef.current?.send(JSON.stringify({ type: "move", from, to, promotion, clientMoveId: crypto.randomUUID() }));
+      const message = { type: "move", from, to, promotion, clientMoveId: crypto.randomUUID() };
+      if (hostedApi) void hostedAction(message);
+      else socketRef.current?.send(JSON.stringify(message));
       return;
     }
     if (mode === "bot" && (botThinking || local.turn() !== "w")) return;
@@ -492,11 +525,11 @@ export default function App() {
   }
 
   function resign() {
-    if (mode === "online") socketRef.current?.send(JSON.stringify({ type: "resign" }));
+    if (mode === "online") { if (hostedApi) void hostedAction({ type: "resign" }); else socketRef.current?.send(JSON.stringify({ type: "resign" })); }
   }
 
   function drawAction(type: "offer_draw" | "accept_draw" | "decline_draw") {
-    if (mode === "online" && connected) socketRef.current?.send(JSON.stringify({ type }));
+    if (mode === "online" && connected) { if (hostedApi) void hostedAction({ type }); else socketRef.current?.send(JSON.stringify({ type })); }
   }
 
   function importPgn() {

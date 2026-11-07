@@ -109,8 +109,8 @@ h2 { font-size: 24px; margin: 0 0 12px; }
 .connection { color: #c6b9a3; white-space: nowrap; font-size: 14px; }
 .connection.online { color: #99d37a; }
 .player-line { display: flex; align-items: center; gap: 12px; min-height: 74px; }
-.mini-avatar { height: 52px; width: 52px; border-radius: 13px; display: grid; place-items: center; background: #3c3934; color: #efcf91; font-size: 35px; }
-.mini-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.mini-avatar { height: 52px; width: 52px; flex: 0 0 52px; min-width: 52px; overflow: hidden; border-radius: 13px; display: grid; place-items: center; background: #3c3934; color: #efcf91; font-size: 35px; }
+.mini-avatar img { display: block; width: 52px; height: 52px; max-width: none; object-fit: contain; object-position: center; border-radius: inherit; }
 .player-line strong { font-size: 20px; }
 .player-line small { font-size: 13px; }
 .turn-pill { margin-left: auto; background: #334c2b; color: #c9eeb5; border-radius: 12px; padding: 10px 14px; white-space: nowrap; }
