@@ -112,7 +112,6 @@ export default function App() {
   const brilliantReactionIndex = useRef(0);
   const positiveReactionIndex = useRef(0);
   const negativeReactionIndex = useRef(0);
-  const lastGenericReactionAt = useRef(0);
   const winReactionShown = useRef(false);
   const reactedPly = useRef(new Set<number>());
 
@@ -443,7 +442,6 @@ export default function App() {
     setDismissedResult(null);
     winReactionShown.current = false;
     reactedPly.current.clear();
-    lastGenericReactionAt.current = 0;
     positiveReactionIndex.current = 0;
     negativeReactionIndex.current = 0;
   }
@@ -460,7 +458,6 @@ export default function App() {
     setMoveKinds({});
     winReactionShown.current = false;
     reactedPly.current.clear();
-    lastGenericReactionAt.current = 0;
     positiveReactionIndex.current = 0;
     negativeReactionIndex.current = 0;
     setHintMove(null);
@@ -579,17 +576,15 @@ export default function App() {
     if (mode === "online" || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
     if (mode === "bot" && coach === "Мелстрой") {
-      if (ply % 2 === 0 || reaction || Date.now() - lastGenericReactionAt.current < 30_000) return;
-      const isPositive = ["brilliant", "great", "best", "excellent", "good"].includes(kind);
+      if (ply % 2 === 0) return;
+      const isPositive = ["brilliant", "great", "best", "excellent", "good", "book"].includes(kind);
       const isNegative = ["inaccuracy", "mistake", "blunder", "missed-win"].includes(kind);
       if (isPositive || isNegative) {
         const clips = isPositive ? ["positive-20", "positive-23"] : ["negative-17", "negative-39"];
         const index = isPositive ? positiveReactionIndex.current : negativeReactionIndex.current;
-        if (index >= clips.length) return;
         if (isPositive) positiveReactionIndex.current++;
         else negativeReactionIndex.current++;
-        lastGenericReactionAt.current = Date.now();
-        enqueueReaction(`/assets/reactions/verified/${clips[index]}.webm`);
+        enqueueReaction(`/assets/reactions/verified/${clips[index % clips.length]}.webm`);
       }
     } else if (kind === "blunder" || kind === "missed-win") {
       const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
@@ -728,4 +723,3 @@ export default function App() {
     </div>
   );
 }
-

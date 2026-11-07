@@ -6,6 +6,18 @@ import { isBookLine, loadOpeningBook } from "./openingBook";
 
 export type MoveKind = "brilliant" | "great" | "best" | "excellent" | "good" | "book" | "inaccuracy" | "mistake" | "blunder" | "missed-win";
 type Evaluation = { score: number; kind: MoveKind; san: string; depth: number; moveNumber: number };
+const positionCache = new Map<string, EngineResult>();
+
+async function evaluatePosition(fen: string) {
+  const cached = positionCache.get(fen);
+  if (cached) return cached;
+  const result = await engine().search(fen, 20, 650);
+  if (result.depth >= 10 && (result.score !== null || result.mate !== null)) {
+    if (positionCache.size >= 256) positionCache.delete(positionCache.keys().next().value!);
+    positionCache.set(fen, result);
+  }
+  return result;
+}
 
 export const labels: Record<MoveKind, string> = {
   brilliant: "Бриллиантовый", great: "Замечательный", best: "Лучший", excellent: "Отличный", good: "Хороший", book: "Теория",
@@ -42,7 +54,7 @@ export function classify(before: EngineResult, after: EngineResult, move: Move, 
   if (loss >= 25) return "blunder";
   if (loss >= 12) return "mistake";
   if (loss >= 5) return "inaccuracy";
-  if (engineBest && before.depth >= 18 && after.depth >= 18 && sacrifice(game, move) && loss <= 1 && winChance(actual) >= 40) return "brilliant";
+  if (engineBest && before.depth >= 14 && after.depth >= 14 && sacrifice(game, move) && loss <= 1 && winChance(actual) >= 40) return "brilliant";
   if (engineBest && loss <= 1.5) return "best";
   if (loss <= 2) return "excellent";
   return "good";
@@ -63,7 +75,8 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
   }, [active]);
 
   useEffect(() => {
-    if (!active || !pgn) { generation.current += 1; setValue(null); setBusy(false); return; }
+    const currentGeneration = ++generation.current;
+    if (!active || !pgn) { setValue(null); setBusy(false); return; }
     const game = new Chess();
     try { game.loadPgn(pgn); } catch { return; }
     const history = game.history({ verbose: true });
@@ -72,16 +85,15 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     const afterFen = game.fen();
     game.undo();
     const beforeFen = game.fen();
-    const currentGeneration = generation.current;
     setBusy(true);
     void (async () => {
       const entries = await loadOpeningBook().catch(() => []);
       const isBook = isBookLine(history.map(item => item.san), entries);
-      const before = await engine().search(beforeFen, 20, 650);
-      const after = await engine().search(afterFen, 20, 650);
+      const before = isBook ? null : await evaluatePosition(beforeFen);
+      const after = await evaluatePosition(afterFen);
       if (currentGeneration !== generation.current) return;
-      if ((before.score === null && before.mate === null) || (after.score === null && after.mate === null) || Math.min(before.depth, after.depth) < 10) return;
-      const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before, after, move, new Chess(afterFen)), san: move.san, depth: Math.min(before.depth, after.depth), moveNumber: history.length };
+      if ((!isBook && (!before || (before.score === null && before.mate === null) || before.depth < 10)) || (after.score === null && after.mate === null) || after.depth < 10) return;
+      const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before!, after, move, new Chess(afterFen)), san: move.san, depth: before ? Math.min(before.depth, after.depth) : after.depth, moveNumber: history.length };
       setHistory(previous => ({ ...previous, [result.moveNumber]: result }));
       setValue(previous => previous && previous.moveNumber > result.moveNumber ? previous : result);
       onClassified?.(result.moveNumber, result.kind, move.to);
@@ -98,4 +110,3 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
       {Object.keys(history).length > 0 && <div className="evaluated-moves" aria-label="Оценка ходов">{Object.values(history).sort((a, b) => a.moveNumber - b.moveNumber).map(item => <span key={item.moveNumber} title={labels[item.kind]}><b>{Math.ceil(item.moveNumber / 2)}{item.moveNumber % 2 ? "." : "..."}</b> {item.san} <MoveIcon kind={item.kind} size={19} /></span>)}</div>}</div>
   </div>;
 }
-
