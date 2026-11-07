@@ -223,15 +223,15 @@ export default function App() {
   }, [mode, gameResult, guestToken, apiUrl]);
 
   useEffect(() => {
-    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || gameResult === "1/2-1/2" || reaction || winReactionShown.current) return;
-    const winnerParity = gameResult === "1-0" ? 1 : 0;
-    if (Object.entries(moveKinds).filter(([ply, kind]) => Number(ply) % 2 === winnerParity && kind === "brilliant").length < 2) return;
+    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || winReactionShown.current) return;
+    const brilliantCount = Object.entries(moveKinds).filter(([ply, kind]) => kind === "brilliant" && (mode === "local" || Number(ply) % 2 === 1)).length;
+    if (brilliantCount < 2) return;
     const timer = window.setTimeout(() => {
       winReactionShown.current = true;
       enqueueReaction("/assets/reactions/events/brilliant-win.mp4");
     }, 2600);
     return () => window.clearTimeout(timer);
-  }, [mode, coach, gameResult, moveKinds, reaction]);
+  }, [mode, coach, gameResult, moveKinds]);
 
   useEffect(() => {
     if (gameResult && (mode === "bot" || mode === "online") && gameResult !== "1/2-1/2" && dismissedResult !== gameResult) vibrateForMate();
