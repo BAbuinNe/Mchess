@@ -85,6 +85,7 @@ export default function App() {
   const [analysis, setAnalysis] = useState<EngineResult | null>(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [reaction, setReaction] = useState<string | null>(null);
+  const [reactionQueue, setReactionQueue] = useState<string[]>([]);
   const [moveKinds, setMoveKinds] = useState<Record<number, MoveKind>>({});
   const [pgnInput, setPgnInput] = useState("");
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem("mchess.apiUrl") || DEFAULT_API);
@@ -114,6 +115,18 @@ export default function App() {
   const lastGenericReactionAt = useRef(0);
   const winReactionShown = useRef(false);
   const reactedPly = useRef(new Set<number>());
+
+  function enqueueReaction(clip: string) {
+    if (!reaction) setReaction(clip);
+    else setReactionQueue(queue => [...queue, clip]);
+  }
+  function finishReaction() {
+    setReactionQueue(queue => {
+      const [next, ...rest] = queue;
+      setReaction(next ?? null);
+      return rest;
+    });
+  }
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
@@ -215,7 +228,7 @@ export default function App() {
     if (Object.entries(moveKinds).filter(([ply, kind]) => Number(ply) % 2 === winnerParity && kind === "brilliant").length < 2) return;
     const timer = window.setTimeout(() => {
       winReactionShown.current = true;
-      setReaction("/assets/reactions/events/brilliant-win.mp4");
+      enqueueReaction("/assets/reactions/events/brilliant-win.mp4");
     }, 2600);
     return () => window.clearTimeout(timer);
   }, [mode, coach, gameResult, moveKinds, reaction]);
@@ -573,15 +586,15 @@ export default function App() {
         if (isPositive) positiveReactionIndex.current++;
         else negativeReactionIndex.current++;
         lastGenericReactionAt.current = Date.now();
-        setReaction(current => current ?? `/assets/reactions/verified/${clips[index]}.webm`);
+        enqueueReaction(`/assets/reactions/verified/${clips[index]}.webm`);
       }
     } else if (kind === "blunder" || kind === "missed-win") {
       const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
-      setReaction(current => current ?? `/assets/reactions/events/${clip}.mp4`);
+      enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
     } else if (kind === "brilliant") {
       const played = local.history({ verbose: true })[ply - 1];
       const clip = played?.piece === "r" ? "brilliant-rook" : ["brilliant-1", "brilliant-2"][brilliantReactionIndex.current++ % 2];
-      setReaction(current => current ?? `/assets/reactions/events/${clip}.mp4`);
+      enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
     }
   }
 
@@ -708,7 +721,7 @@ export default function App() {
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><span>{icon}</span><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={reaction} onClose={() => setReaction(null)} />
+      <CoachReaction clip={reaction} onClose={finishReaction} />
     </div>
   );
 }
