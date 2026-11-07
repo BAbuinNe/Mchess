@@ -1,0 +1,55 @@
+[
+  {
+    "path": "apps/web/public/assets/reactions/events/blunder-1.mp4",
+    "hash": "711d652b4d98fd37bed0a6a5521deca002c42276c68a93d8bfcd5152c41be843",
+    "parts": [
+      "deploy-parts/711d652b4d98fd37-0.part",
+      "deploy-parts/711d652b4d98fd37-1.part",
+      "deploy-parts/711d652b4d98fd37-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/blunder-2.mp4",
+    "hash": "5f4584d9ae969f03bf5597c2d99cf92de034f36c8fc07b2645358a76b6df6efa",
+    "parts": [
+      "deploy-parts/5f4584d9ae969f03-0.part",
+      "deploy-parts/5f4584d9ae969f03-1.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/brilliant-1.mp4",
+    "hash": "90d87602d48d6946b87e653c5ed5b7c733bb1606d86a877b004f2313f727de0f",
+    "parts": [
+      "deploy-parts/90d87602d48d6946-0.part",
+      "deploy-parts/90d87602d48d6946-1.part",
+      "deploy-parts/90d87602d48d6946-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/brilliant-rook.mp4",
+    "hash": "4c6663644ab76cc0d64f78deed636d1d29d9c599d384954535498e43d6526125",
+    "parts": [
+      "deploy-parts/4c6663644ab76cc0-0.part",
+      "deploy-parts/4c6663644ab76cc0-1.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/brilliant-win.mp4",
+    "hash": "8e4d9594a4312b5c7eb188ecbf39f7de4ff75b5c44e368f3df2e6ef9fb51a0ed",
+    "parts": [
+      "deploy-parts/8e4d9594a4312b5c-0.part",
+      "deploy-parts/8e4d9594a4312b5c-1.part",
+      "deploy-parts/8e4d9594a4312b5c-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/engine/stockfish-19-lite-single.wasm",
+    "hash": "ee4f115bdb2d32cadf96cada104a05b5ec257d7ad6f57582190b49bc71f096de",
+    "parts": [
+      "deploy-parts/ee4f115bdb2d32ca-0.part",
+      "deploy-parts/ee4f115bdb2d32ca-1.part",
+      "deploy-parts/ee4f115bdb2d32ca-2.part",
+      "deploy-parts/ee4f115bdb2d32ca-3.part"
+    ]
+  }
+]

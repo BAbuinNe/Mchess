@@ -1,0 +1,10 @@
+node_modules
+apps/*/node_modules
+apps/*/dist
+apps/web/android
+apps/server/data
+media-review
+artifacts
+resources
+*.apk
+.git

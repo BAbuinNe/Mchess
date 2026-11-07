@@ -1,0 +1,27 @@
+{
+  "name": "mchess",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/server"
+  ],
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "npm run dev -w @mchess/web",
+    "dev:server": "npm run dev -w @mchess/server",
+    "build": "npm run build -w @mchess/server && npm run build -w @mchess/web",
+    "test:board": "node tests/board.e2e.mjs",
+    "test:result": "node tests/result.e2e.mjs",
+    "test:reaction": "node tests/reaction.e2e.mjs",
+    "test:online": "node tests/online.e2e.mjs",
+    "test:online-ui": "node tests/online-ui.e2e.mjs",
+    "test:server-static": "node tests/server-static.e2e.mjs",
+    "test:announcements": "node tests/announcements.e2e.mjs",
+    "test:new-game-ui": "node tests/new-game-ui.e2e.mjs",
+    "build:openings": "node scripts/build-openings.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1"
+  }
+}
