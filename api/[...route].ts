@@ -1,4 +1,4 @@
-import { get, put, BlobPreconditionFailedError } from "@vercel/blob";
+import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -29,10 +29,11 @@ async function update(change: (data: Data) => { status: number; body: unknown; d
     const result = change(data);
     if (!result.dirty) return result;
     try {
-      await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(etag ? { ifMatch: etag } : {}) });
+      const metadata = etag ? await head(PATH) : null;
+      await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(metadata ? { ifMatch: metadata.etag } : {}) });
       return result;
     } catch (error) {
-      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) { console.error("Blob retry", attempt, Boolean(etag), error instanceof Error ? error.message : String(error)); continue; }
+      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) continue;
       throw error;
     }
   }
