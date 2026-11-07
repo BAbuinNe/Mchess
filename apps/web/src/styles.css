@@ -48,7 +48,7 @@ button:focus-visible { outline: 3px solid #d4b475; outline-offset: 2px; }
 .square.selected { box-shadow: inset 0 0 0 4px #f5d46f; }
 .square.in-check { background-image: radial-gradient(ellipse, #e44a4ab0, #e44a4a15 72%); }
 .piece { position: absolute; z-index: 1; width: 88%; height: 88%; left: 6%; top: 6%; display: block; object-fit: contain; pointer-events: none; user-select: none; filter: drop-shadow(1px 2px 1px #16161660); }
-.piece-black { filter: brightness(.12) drop-shadow(0 0 1px #f7f1e6) drop-shadow(1px 2px 1px #0008); }
+.piece-black { filter: drop-shadow(.8px 0 0 #f7f1e6) drop-shadow(-.8px 0 0 #f7f1e6) drop-shadow(0 .8px 0 #f7f1e6) drop-shadow(0 -.8px 0 #f7f1e6) drop-shadow(1px 2px 1px #0008); }
 .piece-white { filter: drop-shadow(1px 2px 1px #16161690); }
 .square.last-move .piece { animation: piece-arrive .18s ease-out; }
 .square.hint-square { box-shadow: inset 0 0 0 4px #57c8d9; }
@@ -281,4 +281,3 @@ h2 { font-size: 24px; margin: 0 0 12px; }
   .bottom-nav span { font-size: 25px; }
   .bottom-nav small { font-size: 10px; }
 }
-
