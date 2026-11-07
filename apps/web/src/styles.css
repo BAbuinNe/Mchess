@@ -26,6 +26,10 @@ button:focus-visible { outline: 3px solid #d4b475; outline-offset: 2px; }
 .page { padding: 6px 28px 38px; }
 .notice { position: fixed; z-index: 25; top: calc(78px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(90vw, 560px); padding: 12px 16px; background: #34472d; border: 1px solid #8aac70; border-radius: 14px; box-shadow: 0 12px 35px #0009; display: flex; gap: 16px; justify-content: space-between; animation: result-fade .2s ease-out; }
 .intro-overlay { position: fixed; z-index: 40; inset: 0; display: grid; place-items: center; background: #111; }.intro-overlay video { width: 100%; height: 100%; object-fit: cover; }.intro-overlay button { position: absolute; right: 16px; top: calc(16px + env(safe-area-inset-top)); min-height: 40px; padding: 0 14px; border: 1px solid #d9c494; border-radius: 12px; background: #171511bb; color: #fff1cc; }
+.intro-overlay video { visibility: hidden; position: absolute; inset: 0; }.intro-overlay.playing video { visibility: visible; }
+.intro-fallback { display: grid; justify-items: center; gap: 14px; color: #e9ce96; font-size: 30px; font-weight: 800; animation: intro-pulse 2s ease-in-out both; }
+.intro-fallback img { width: 104px; height: 104px; border-radius: 24px; }
+@keyframes intro-pulse { 0% { opacity: 0; transform: scale(.8); } 30%, 80% { opacity: 1; transform: scale(1); } 100% { opacity: .7; } }
 .notice button { border: 0; background: transparent; color: white; font-size: 22px; }
 .profile-strip { display: flex; align-items: center; gap: 18px; min-height: 120px; width: 100%; padding: 12px; border: 0; border-radius: 22px; background: transparent; color: inherit; text-align: left; cursor: pointer; }
 .profile-strip .avatar { flex: 0 0 auto; }
@@ -191,6 +195,8 @@ h2 { font-size: 24px; margin: 0 0 12px; }
 .news-dialog button:active, .news-dialog a:active, .result-card button:active, .game-options > button:active { transform: scale(.975); }
 .notice { border-radius: 19px; background: #34492ef4; backdrop-filter: blur(14px); animation: notice-appear .38s cubic-bezier(.2,1.3,.3,1) both; }
 .bottom-nav { background: #242522e8; box-shadow: 0 -12px 28px #0003; }
+.native-platform .topbar { position: sticky; top: 0; z-index: 12; padding-top: calc(12px + max(env(safe-area-inset-top), 28px)); background: #20231fe8; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.native-platform .intro-overlay button { top: calc(12px + max(env(safe-area-inset-top), 28px)); }
 .bottom-nav button { transition: color .2s, transform .2s; }
 .bottom-nav button:active { transform: scale(.9); }
 .primary-button { border-radius: 18px; transition: transform .2s cubic-bezier(.2,1.4,.2,1), filter .2s, box-shadow .2s; }
@@ -251,3 +257,4 @@ h2 { font-size: 24px; margin: 0 0 12px; }
   .bottom-nav span { font-size: 25px; }
   .bottom-nav small { font-size: 10px; }
 }
+

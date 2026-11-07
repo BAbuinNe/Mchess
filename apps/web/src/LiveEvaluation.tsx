@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Chess, type Move } from "chess.js";
 import { engine, type EngineResult } from "./engine";
 import MoveIcon from "./MoveIcon";
+import { isBookLine, loadOpeningBook } from "./openingBook";
 
 export type MoveKind = "brilliant" | "great" | "best" | "excellent" | "good" | "book" | "inaccuracy" | "mistake" | "blunder" | "missed-win";
 type Evaluation = { score: number; kind: MoveKind; san: string; depth: number; moveNumber: number };
@@ -71,10 +72,12 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     const currentGeneration = generation.current;
     setBusy(true);
     void (async () => {
+      const entries = await loadOpeningBook().catch(() => []);
+      const isBook = isBookLine(history.map(item => item.san), entries);
       const before = await engine().search(beforeFen, 20, 350);
       const after = await engine().search(afterFen, 20, 350);
       if (currentGeneration !== generation.current) return;
-      const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: classify(before, after, move, new Chess(afterFen)), san: move.san, depth: Math.min(before.depth, after.depth), moveNumber: history.length };
+      const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before, after, move, new Chess(afterFen)), san: move.san, depth: Math.min(before.depth, after.depth), moveNumber: history.length };
       setHistory(previous => ({ ...previous, [result.moveNumber]: result }));
       setValue(previous => previous && previous.moveNumber > result.moveNumber ? previous : result);
       onClassified?.(result.moveNumber, result.kind, move.to);
@@ -91,3 +94,4 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
       {Object.keys(history).length > 0 && <div className="evaluated-moves" aria-label="Оценка ходов">{Object.values(history).sort((a, b) => a.moveNumber - b.moveNumber).map(item => <span key={item.moveNumber} title={labels[item.kind]}><b>{Math.ceil(item.moveNumber / 2)}{item.moveNumber % 2 ? "." : "..."}</b> {item.san} <MoveIcon kind={item.kind} size={19} /></span>)}</div>}</div>
   </div>;
 }
+

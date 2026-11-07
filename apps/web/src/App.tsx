@@ -12,6 +12,7 @@ import { App as NativeApp } from "@capacitor/app";
 import ResultAnimation from "./ResultAnimation";
 import { playMoveSound, vibrateForMate } from "./gameFeedback";
 import NewsCenter from "./NewsCenter";
+import IntroScreen from "./IntroScreen";
 
 type Tab = "home" | "newgame" | "play" | "puzzles" | "learn" | "profile" | "analysis";
 type Seat = "w" | "b";
@@ -208,8 +209,9 @@ export default function App() {
   }, [mode, gameResult, guestToken, apiUrl]);
 
   useEffect(() => {
-    if (mode !== "bot" || coach !== "Мелстрой" || gameResult !== "1-0" || reaction || winReactionShown.current) return;
-    if (Object.entries(moveKinds).filter(([ply, kind]) => Number(ply) % 2 === 1 && kind === "brilliant").length < 2) return;
+    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || gameResult === "1/2-1/2" || reaction || winReactionShown.current) return;
+    const winnerParity = gameResult === "1-0" ? 1 : 0;
+    if (Object.entries(moveKinds).filter(([ply, kind]) => Number(ply) % 2 === winnerParity && kind === "brilliant").length < 2) return;
     const timer = window.setTimeout(() => {
       winReactionShown.current = true;
       setReaction("/assets/reactions/events/brilliant-win.mp4");
@@ -395,6 +397,8 @@ export default function App() {
     winReactionShown.current = false;
     reactedPly.current.clear();
     lastGenericReactionAt.current = 0;
+    positiveReactionIndex.current = 0;
+    negativeReactionIndex.current = 0;
   }
 
   function startBot() {
@@ -410,6 +414,8 @@ export default function App() {
     winReactionShown.current = false;
     reactedPly.current.clear();
     lastGenericReactionAt.current = 0;
+    positiveReactionIndex.current = 0;
+    negativeReactionIndex.current = 0;
     setHintMove(null);
     setDismissedResult(null);
     setFlipped(false);
@@ -521,24 +527,28 @@ export default function App() {
   function onMoveClassified(ply: number, kind: MoveKind, square: string) {
     setMoveBadges(previous => [...previous.filter(item => item.ply % 2 !== ply % 2 && item.ply < ply && item.square !== square), { ply, kind, square: square as Square }]);
     setMoveKinds(previous => previous[ply] === kind ? previous : { ...previous, [ply]: kind });
-    if (coach !== "Мелстрой" || mode !== "bot" || ply % 2 === 0 || reactedPly.current.has(ply)) return;
+    if (mode === "online" || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
-    if (kind === "blunder" || kind === "missed-win") {
+    if (mode === "bot" && coach === "Мелстрой") {
+      if (ply % 2 === 0 || reaction || Date.now() - lastGenericReactionAt.current < 30_000) return;
+      const isPositive = ["brilliant", "great", "best", "excellent", "good"].includes(kind);
+      const isNegative = ["inaccuracy", "mistake", "blunder", "missed-win"].includes(kind);
+      if (isPositive || isNegative) {
+        const clips = isPositive ? ["positive-20", "positive-23"] : ["negative-17", "negative-39"];
+        const index = isPositive ? positiveReactionIndex.current : negativeReactionIndex.current;
+        if (index >= clips.length) return;
+        if (isPositive) positiveReactionIndex.current++;
+        else negativeReactionIndex.current++;
+        lastGenericReactionAt.current = Date.now();
+        setReaction(current => current ?? `/assets/reactions/verified/${clips[index]}.webm`);
+      }
+    } else if (kind === "blunder" || kind === "missed-win") {
       const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
       setReaction(current => current ?? `/assets/reactions/events/${clip}.mp4`);
     } else if (kind === "brilliant") {
       const played = local.history({ verbose: true })[ply - 1];
       const clip = played?.piece === "r" ? "brilliant-rook" : ["brilliant-1", "brilliant-2"][brilliantReactionIndex.current++ % 2];
       setReaction(current => current ?? `/assets/reactions/events/${clip}.mp4`);
-    } else if (Date.now() - lastGenericReactionAt.current >= 10_000) {
-      const isPositive = ["great", "best", "excellent", "good"].includes(kind);
-      const isNegative = ["inaccuracy", "mistake"].includes(kind);
-      if (isPositive || isNegative) {
-        const clips = isPositive ? ["positive-20", "positive-23"] : ["negative-17", "negative-39"];
-        const index = isPositive ? positiveReactionIndex.current++ : negativeReactionIndex.current++;
-        lastGenericReactionAt.current = Date.now();
-        setReaction(current => current ?? `/assets/reactions/verified/${clips[index % clips.length]}.webm`);
-      }
     }
   }
 
@@ -557,8 +567,8 @@ export default function App() {
   );
 
   return (
-    <div className={"app-shell" + (tab === "play" ? " in-game" : "")}>
-      {showIntro && <div className="intro-overlay" role="dialog" aria-label="Заставка MChess"><video src="/assets/intro/intro.mp4" autoPlay muted playsInline onEnded={() => setShowIntro(false)} onError={() => setShowIntro(false)} /><button type="button" onClick={() => setShowIntro(false)}>Пропустить</button></div>}
+    <div className={"app-shell" + (tab === "play" ? " in-game" : "") + (Capacitor.isNativePlatform() ? " native-platform" : "")}>
+      {showIntro && <IntroScreen onFinish={() => setShowIntro(false)} />}
       <header className="topbar">
         <button className="brand" onClick={() => setTab("home")} type="button">{tab === "play" ? <span className="back-arrow">‹</span> : <img className="brand-mark" src="/icon-192.png" alt="" />} MChess</button>
         <div className="header-actions"><NewsCenter apiUrl={apiUrl} introVisible={showIntro} /><button className="header-action" onClick={() => setTab("profile")} type="button" aria-label="Профиль">⚙</button></div>
@@ -612,7 +622,7 @@ export default function App() {
             {playerLine(orientation === "w" ? "b" : "w", false)}
             {mode === "bot" && <label className="bot-level">Уровень тренера <select value={botLevel} onChange={event => setBotLevel(Number(event.target.value))}>{botLevels.map((level, i) => <option key={level} value={i}>{level} Эло</option>)}</select></label>}
             {board}
-            <LiveEvaluation pgn={localPgn} active={mode === "bot"} onClassified={onMoveClassified} />
+            <LiveEvaluation pgn={localPgn} active={mode !== "online"} onClassified={onMoveClassified} />
             {playerLine(orientation, true)}
             {mode === "online" && <button className="primary-button" onClick={() => void copyInvite()}>{Capacitor.isNativePlatform() ? "Скопировать код комнаты" : "Пригласить по ссылке"}</button>}
             <div className="quick-actions">
@@ -669,3 +679,4 @@ export default function App() {
     </div>
   );
 }
+

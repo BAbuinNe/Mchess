@@ -10,8 +10,10 @@ const browser = await chromium.launch({ executablePath, headless: true });
 try {
   for (const width of [320, 360, 393, 412, 480]) {
     const page = await browser.newPage({ viewport: { width, height: 850 }, deviceScaleFactor: 1 });
+    await page.addInitScript(() => localStorage.setItem("mchess.telegramInviteDismissed", "1"));
     await page.goto("http://127.0.0.1:5173/");
     await page.getByRole("button", { name: /Играть/, exact: false }).first().click();
+    await page.getByRole("button", { name: /На одном устройстве/ }).click();
     const geometry = await page.locator(".board-grid").evaluate(board => {
       const bounds = board.getBoundingClientRect();
       const cells = [...board.querySelectorAll(".square")].map(cell => cell.getBoundingClientRect());
@@ -50,7 +52,7 @@ try {
     process.stdout.write(`board ${width}px: OK\n`);
   }
   const botPage = await browser.newPage({ viewport: { width: 393, height: 850 } });
-  await botPage.addInitScript(() => localStorage.setItem("mchess.coach", "Мелстрой"));
+  await botPage.addInitScript(() => { localStorage.setItem("mchess.coach", "Мелстрой"); localStorage.setItem("mchess.telegramInviteDismissed", "1"); });
   await botPage.goto("http://127.0.0.1:5173/");
   await botPage.getByRole("button", { name: /Играть с ботом/ }).click();
   await botPage.locator('[data-square="e2"]').click();
@@ -58,8 +60,7 @@ try {
   await botPage.locator(".move-feedback").waitFor({ timeout: 45000 });
   await botPage.locator('[data-square="e4"] .board-move-badge svg').waitFor({ timeout: 45000 });
   assert.ok(await botPage.locator('[data-square="e4"] .board-move-badge svg').count(), "human move icon missing after bot replies");
-  await botPage.locator('.coach-reaction.ready video').waitFor({ timeout: 30000 });
-  assert.equal(await botPage.locator('.coach-reaction video').evaluate(video => video.paused), false, "Mellstroy reaction did not play");
+  assert.match(await botPage.locator(".move-feedback").innerText(), /Теория/, "opening move should be marked as theory");
   const summaryBox = await botPage.locator('.eval-summary').boundingBox();
   const boardBox = await botPage.locator('.board-frame').first().boundingBox();
   const actionsBox = await botPage.locator('.play-page .quick-actions').boundingBox();
@@ -79,3 +80,4 @@ try {
   await browser.close();
   await server.close();
 }
+

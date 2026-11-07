@@ -18,3 +18,9 @@ export function identifyOpening(history: string[], entries: Opening[]) {
     !best || item.moves.length > best.moves.length ? item : best, null);
   return { opening, gambit };
 }
+
+export function isBookLine(history: string[], entries: Opening[]) {
+  return entries.some(entry => entry.moves.length >= history.length &&
+    history.every((move, index) => entry.moves[index] === move));
+}
+

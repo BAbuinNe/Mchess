@@ -3,7 +3,7 @@ import { Chess } from "chess.js";
 import ChessBoard from "./ChessBoard";
 import { engine } from "./engine";
 import { classify, labels, type MoveKind } from "./LiveEvaluation";
-import { loadOpeningBook } from "./openingBook";
+import { isBookLine, loadOpeningBook } from "./openingBook";
 import MoveIcon from "./MoveIcon";
 
 const kinds: MoveKind[] = ["brilliant", "great", "best", "excellent", "good", "book", "inaccuracy", "mistake", "missed-win", "blunder"];
@@ -44,7 +44,7 @@ export default function GameReport({ pgn }: { pgn: string }) {
         const after = await engine().search(walk.fen(), 20, 300);
         if (!active) return;
         const played = history.slice(0, index + 1).map(item => item.san);
-        const isBook = entries.some(entry => entry.moves.length >= played.length && played.every((san, ply) => entry.moves[ply] === san));
+        const isBook = isBookLine(played, entries);
         const kind = isBook ? "book" : classify(before, after, move, walk);
         setEvaluated(previous => ({ ...previous, [index + 1]: kind }));
         setProgress(index + 1);
@@ -62,3 +62,4 @@ export default function GameReport({ pgn }: { pgn: string }) {
     <div className="report-moves" aria-label="Ходы партии">{history.map((move, index) => <button key={index} type="button" className={selectedPly === index + 1 ? "selected" : ""} onClick={() => setSelected(index + 1)}>{index % 2 === 0 ? `${Math.floor(index / 2) + 1}. ` : ""}{move.san} {evaluated[index + 1] && <MoveIcon kind={evaluated[index + 1]} size={19} />}</button>)}</div>
   </div>;
 }
+
