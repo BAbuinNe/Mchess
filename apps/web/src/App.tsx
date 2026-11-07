@@ -74,13 +74,13 @@ export default function App() {
   const [showIntro, setShowIntro] = useState(() => Capacitor.isNativePlatform() && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   const [tab, setTab] = useState<Tab>("home");
   const [localPgn, setLocalPgn] = useState(() => restoreLocal().pgn());
-  const [mode, setMode] = useState<"local" | "online" | "bot">("local");
+  const [mode, setMode] = useState<"local" | "online" | "bot">(() => localStorage.getItem("mchess.lastLocalMode") === "bot" ? "bot" : "local");
   const [session, setSession] = useState<Session | null>(null);
   const [online, setOnline] = useState<OnlineState | null>(null);
   const [notice, setNotice] = useState("");
   const [connected, setConnected] = useState(false);
   const [coach, setCoach] = useState(() => localStorage.getItem("mchess.coach") || "Магнус Карлсен");
-  const [botLevel, setBotLevel] = useState(3);
+  const [botLevel, setBotLevel] = useState(() => Math.max(0, Math.min(botLevels.length - 1, Number(localStorage.getItem("mchess.botLevel") ?? 3) || 0)));
   const [botThinking, setBotThinking] = useState(false);
   const [analysis, setAnalysis] = useState<EngineResult | null>(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
@@ -115,6 +115,9 @@ export default function App() {
   const lastGenericReactionAt = useRef(0);
   const winReactionShown = useRef(false);
   const reactedPly = useRef(new Set<number>());
+
+  useEffect(() => { if (mode !== "online") localStorage.setItem("mchess.lastLocalMode", mode); }, [mode]);
+  useEffect(() => { localStorage.setItem("mchess.botLevel", String(botLevel)); }, [botLevel]);
 
   function enqueueReaction(clip: string) {
     if (!reaction) setReaction(clip);
@@ -641,7 +644,7 @@ export default function App() {
             <div className="join-room"><input aria-label="Код комнаты" placeholder="Код комнаты друга" value={joinCode} onChange={event => setJoinCode(event.target.value.trim())} /><button onClick={() => void joinRoom(joinCode)} disabled={!joinCode}>Войти</button></div>
             <button className="feature-row" onClick={() => setTab("puzzles")}><span className="tile">✥</span><span><strong>Задачи</strong><small>Тренируйте тактику</small></span><b>›</b></button>
             <button className="feature-row" onClick={() => setTab("learn")}><span className="tile gold">♜</span><span><strong>Обучение</strong><small>Пять программ Академии</small></span><b>›</b></button>
-            <button className="feature-row" onClick={startLocal}><span className="tile muted">♚</span><span><strong>Последняя партия</strong><small>{moves.length ? moves.length + " полуходов сохранено" : "Начните первую партию"}</small></span><b>›</b></button>
+            <button className="feature-row" onClick={() => setTab("play")}><span className="tile muted">♚</span><span><strong>Последняя партия</strong><small>{moves.length ? moves.length + " полуходов сохранено" : "Начните первую партию"}</small></span><b>›</b></button>
           </section>
         )}
 

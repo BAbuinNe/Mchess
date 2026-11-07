@@ -104,7 +104,7 @@ export default function ChessBoard({ fen, onMove, side = "both", orientation = "
               >
                 {col === 0 && <span className="rank-label">{ranks[row]}</span>}
                 {row === 7 && <span className="file-label">{files[col]}</span>}
-                {piece && <img className="piece" src={pieceUrl(piece.color, piece.type)} alt="" draggable={false} />}
+                {piece && <img className={"piece " + (piece.color === "b" ? "piece-black" : "piece-white")} src={pieceUrl(piece.color, piece.type)} alt="" draggable={false} />}
                 {badge && piece && <span className="board-move-badge" title={badge.kind}><MoveIcon kind={badge.kind} size={26} /></span>}
                 {isTarget && <span className={piece ? "capture-ring" : "move-dot"} />}
               </button>
@@ -116,3 +116,4 @@ export default function ChessBoard({ fen, onMove, side = "both", orientation = "
     </div>
   );
 }
+
