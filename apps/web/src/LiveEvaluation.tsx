@@ -65,39 +65,71 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
   const [history, setHistory] = useState<Record<number, Evaluation>>({});
   const [busy, setBusy] = useState(false);
   const generation = useRef(0);
+  const scheduled = useRef(new Set<number>());
+  const previousMoves = useRef<string[]>([]);
+  const running = useRef(0);
 
   useEffect(() => () => { generation.current += 1; }, []);
 
   useEffect(() => {
     generation.current += 1;
+    scheduled.current.clear();
+    previousMoves.current = [];
+    running.current = 0;
     setHistory({});
     setValue(null);
   }, [active]);
 
   useEffect(() => {
-    const currentGeneration = ++generation.current;
-    if (!active || !pgn) { setValue(null); setBusy(false); return; }
+    if (!active || !pgn) {
+      generation.current += 1;
+      scheduled.current.clear();
+      previousMoves.current = [];
+      running.current = 0;
+      setHistory({});
+      setValue(null);
+      setBusy(false);
+      return;
+    }
     const game = new Chess();
     try { game.loadPgn(pgn); } catch { return; }
-    const history = game.history({ verbose: true });
-    const move = history.at(-1);
-    if (!move) return;
-    const afterFen = game.fen();
-    game.undo();
-    const beforeFen = game.fen();
-    setBusy(true);
-    void (async () => {
-      const entries = await loadOpeningBook().catch(() => []);
-      const isBook = isBookLine(history.map(item => item.san), entries);
-      const before = isBook ? null : await evaluatePosition(beforeFen);
-      const after = await evaluatePosition(afterFen);
-      if (currentGeneration !== generation.current) return;
-      if ((!isBook && (!before || (before.score === null && before.mate === null) || before.depth < 10)) || (after.score === null && after.mate === null) || after.depth < 10) return;
-      const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before!, after, move, new Chess(afterFen)), san: move.san, depth: before ? Math.min(before.depth, after.depth) : after.depth, moveNumber: history.length };
-      setHistory(previous => ({ ...previous, [result.moveNumber]: result }));
-      setValue(previous => previous && previous.moveNumber > result.moveNumber ? previous : result);
-      onClassified?.(result.moveNumber, result.kind, move.to);
-    })().catch(() => {}).finally(() => { if (currentGeneration === generation.current) setBusy(false); });
+    const moves = game.history({ verbose: true });
+    const san = moves.map(move => move.san);
+    const changedLine = previousMoves.current.length > san.length || previousMoves.current.some((move, index) => san[index] !== move);
+    if (changedLine) {
+      generation.current += 1;
+      scheduled.current.clear();
+      running.current = 0;
+      setHistory({});
+      setValue(null);
+    }
+    previousMoves.current = san;
+    const currentGeneration = generation.current;
+    const replay = new Chess();
+    for (let index = 0; index < moves.length; index++) {
+      const beforeFen = replay.fen();
+      replay.move(moves[index].san);
+      if (index < moves.length - 2 || scheduled.current.has(index + 1)) continue;
+      const afterFen = replay.fen();
+      const move = moves[index];
+      const ply = index + 1;
+      scheduled.current.add(ply);
+      running.current += 1;
+      setBusy(true);
+      void (async () => {
+        const entries = await loadOpeningBook().catch(() => []);
+        const isBook = isBookLine(san.slice(0, ply), entries);
+        const before = isBook ? null : await evaluatePosition(beforeFen);
+        const after = await evaluatePosition(afterFen);
+        if (currentGeneration !== generation.current) return;
+        if ((!isBook && (!before || (before.score === null && before.mate === null) || before.depth < 10)) || (after.score === null && after.mate === null) || after.depth < 10) return;
+        const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before!, after, move, new Chess(afterFen)), san: move.san, depth: before ? Math.min(before.depth, after.depth) : after.depth, moveNumber: ply };
+        setHistory(previous => ({ ...previous, [ply]: result }));
+        setValue(previous => previous && previous.moveNumber > ply ? previous : result);
+        onClassified?.(ply, result.kind, move.to);
+      })().catch(() => { if (currentGeneration === generation.current) scheduled.current.delete(ply); })
+        .finally(() => { if (currentGeneration === generation.current) { running.current -= 1; setBusy(running.current > 0); } });
+    }
   }, [pgn, active]);
 
   if (!active) return null;
