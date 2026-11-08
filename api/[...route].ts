@@ -23,10 +23,8 @@ async function read(): Promise<{ data: Data; etag?: string }> {
   if (!current || current.statusCode !== 200) return { data: empty() };
   const data = JSON.parse(await new Response(current.stream).text()) as Data;
   const metadata = await head(PATH);
-  if (!metadata || current.blob.etag.replaceAll('"', '') !== metadata.etag.replaceAll('"', '')) {
-    console.error("MChess state etags differ", { body: current.blob.etag, head: metadata?.etag });
-    throw new Error("state_changed_during_read");
-  }
+  const normalizeEtag = (etag: string) => etag.replace(/^W\//, "").replaceAll('"', '');
+  if (!metadata || normalizeEtag(current.blob.etag) !== normalizeEtag(metadata.etag)) throw new Error("state_changed_during_read");
   return { data, etag: metadata.etag };
 }
 async function update(change: (data: Data) => { status: number; body: unknown; dirty?: boolean }): Promise<{ status: number; body: unknown }> {
@@ -40,7 +38,7 @@ async function update(change: (data: Data) => { status: number; body: unknown; d
       await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(etag ? { ifMatch: etag } : {}) });
       return result;
     } catch (error) {
-      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) { console.error("MChess state write conflict", { etag, message: String(error) }); continue; }
+      if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) continue;
       throw error;
     }
   }
