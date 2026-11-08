@@ -7,9 +7,12 @@ await server.listen();
 const browser = await chromium.launch({ executablePath: process.env.MCHESS_BROWSER || "C:/Program Files/Google/Chrome/Application/chrome.exe", headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 393, height: 850 } });
-  await page.addInitScript(() => localStorage.setItem("mchess.localPgn", "1. f3 e5 2. g4 Qh4#"));
+  await page.addInitScript(() => {
+    localStorage.setItem("mchess.localPgn", "1. f3 e5 2. g4 Qh4#");
+    localStorage.setItem("mchess.telegramInviteDismissed", "1");
+  });
   await page.goto("http://127.0.0.1:5173/");
-  await page.getByRole("button", { name: /Играть/, exact: false }).first().click();
+  await page.getByRole("button", { name: /Последняя партия/ }).click();
   await page.locator(".result-video").waitFor();
   assert.match(await page.locator(".result-card h2").innerText(), /Победа чёрных/);
   assert.match(await page.locator(".result-video").getAttribute("src"), /victory\.mp4$/);

@@ -71,8 +71,8 @@ class StockfishEngine {
   }
 }
 
-let instance: StockfishEngine | null = null;
-export function engine(): StockfishEngine {
-  if (!instance) instance = new StockfishEngine();
-  return instance;
+const instances: Partial<Record<"analysis" | "play", StockfishEngine>> = {};
+export function engine(purpose: "analysis" | "play" = "analysis"): StockfishEngine {
+  if (!instances[purpose]) instances[purpose] = new StockfishEngine();
+  return instances[purpose];
 }

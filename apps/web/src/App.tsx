@@ -13,6 +13,7 @@ import ResultAnimation from "./ResultAnimation";
 import { playMoveSound, vibrateForMate } from "./gameFeedback";
 import NewsCenter from "./NewsCenter";
 import IntroScreen from "./IntroScreen";
+import { nextMellstroyClip } from "./mellstroyClips";
 
 type Tab = "home" | "newgame" | "play" | "puzzles" | "learn" | "profile" | "analysis";
 type Seat = "w" | "b";
@@ -69,6 +70,10 @@ function restoreLocal(): Chess {
   }
   return chess;
 }
+function storedReactedPlies(gameId: string): Set<number> {
+  try { return new Set(JSON.parse(localStorage.getItem("mchess.reacted." + gameId) || "[]") as number[]); }
+  catch { return new Set(); }
+}
 
 export default function App() {
   const [showIntro, setShowIntro] = useState(() => Capacitor.isNativePlatform() && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
@@ -85,7 +90,16 @@ export default function App() {
   const [analysis, setAnalysis] = useState<EngineResult | null>(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [reaction, setReaction] = useState<string | null>(null);
-  const [reactionQueue, setReactionQueue] = useState<string[]>([]);
+  const reactionQueue = useRef<string[]>([]);
+  const reactionActive = useRef(false);
+  const [videoEnabled, setVideoEnabled] = useState(() => localStorage.getItem("mchess.videoEnabled") !== "false");
+  const [reactionMuted, setReactionMuted] = useState(() => localStorage.getItem("mchess.reactionMuted") === "true");
+  const [reactionFrequency, setReactionFrequency] = useState<"often" | "balanced" | "rare">(() => {
+    const saved = localStorage.getItem("mchess.reactionFrequency");
+    return saved === "balanced" || saved === "rare" ? saved : "often";
+  });
+  const videoEnabledRef = useRef(videoEnabled);
+  videoEnabledRef.current = videoEnabled;
   const [moveKinds, setMoveKinds] = useState<Record<number, MoveKind>>({});
   const [pgnInput, setPgnInput] = useState("");
   const [apiUrl, setApiUrl] = useState(() => localStorage.getItem("mchess.apiUrl") || DEFAULT_API);
@@ -110,24 +124,37 @@ export default function App() {
   const onlineRef = useRef<OnlineState | null>(null);
   const badReactionIndex = useRef(0);
   const brilliantReactionIndex = useRef(0);
-  const positiveReactionIndex = useRef(0);
-  const negativeReactionIndex = useRef(0);
+  const lastGenericReactionAt = useRef(0);
   const winReactionShown = useRef(false);
-  const reactedPly = useRef(new Set<number>());
+  const localGameId = useRef(localStorage.getItem("mchess.localGameId") || crypto.randomUUID());
+  const reactedPly = useRef(storedReactedPlies(localGameId.current));
 
   useEffect(() => { if (mode !== "online") localStorage.setItem("mchess.lastLocalMode", mode); }, [mode]);
   useEffect(() => { localStorage.setItem("mchess.botLevel", String(botLevel)); }, [botLevel]);
+  useEffect(() => { localStorage.setItem("mchess.localGameId", localGameId.current); }, []);
+  useEffect(() => { localStorage.setItem("mchess.videoEnabled", String(videoEnabled)); if (!videoEnabled) { reactionActive.current = false; reactionQueue.current = []; setReaction(null); } }, [videoEnabled]);
+  useEffect(() => { localStorage.setItem("mchess.reactionMuted", String(reactionMuted)); }, [reactionMuted]);
+  useEffect(() => { localStorage.setItem("mchess.reactionFrequency", reactionFrequency); }, [reactionFrequency]);
 
-  function enqueueReaction(clip: string) {
-    if (!reaction) setReaction(clip);
-    else setReactionQueue(queue => [...queue, clip]);
+  function enqueueReaction(clip: string, priority = false) {
+    if (!videoEnabledRef.current) return;
+    if (!reactionActive.current) { reactionActive.current = true; setReaction(clip); }
+    else if (reactionQueue.current.length < 3) reactionQueue.current.push(clip);
+    else if (priority) reactionQueue.current[reactionQueue.current.length - 1] = clip;
+  }
+  function resetReactionHistory() {
+    localGameId.current = crypto.randomUUID();
+    localStorage.setItem("mchess.localGameId", localGameId.current);
+    reactedPly.current.clear();
+    lastGenericReactionAt.current = 0;
+    reactionQueue.current = [];
+    reactionActive.current = false;
+    setReaction(null);
   }
   function finishReaction() {
-    setReactionQueue(queue => {
-      const [next, ...rest] = queue;
-      setReaction(next ?? null);
-      return rest;
-    });
+    const next = reactionQueue.current.shift() ?? null;
+    reactionActive.current = Boolean(next);
+    setReaction(next);
   }
 
   useEffect(() => {
@@ -225,12 +252,13 @@ export default function App() {
   }, [mode, gameResult, guestToken, apiUrl]);
 
   useEffect(() => {
-    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || winReactionShown.current) return;
-    const brilliantCount = Object.entries(moveKinds).filter(([ply, kind]) => kind === "brilliant" && (mode === "local" || Number(ply) % 2 === 1)).length;
+    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || gameResult === "1/2-1/2" || winReactionShown.current) return;
+    const winningParity = gameResult === "1-0" ? 1 : 0;
+    const brilliantCount = Object.entries(moveKinds).filter(([ply, kind]) => kind === "brilliant" && Number(ply) % 2 === winningParity).length;
     if (brilliantCount < 2) return;
     const timer = window.setTimeout(() => {
       winReactionShown.current = true;
-      enqueueReaction("/assets/reactions/events/brilliant-win.mp4");
+      enqueueReaction("/assets/reactions/events/brilliant-win.mp4", true);
     }, 2600);
     return () => window.clearTimeout(timer);
   }, [mode, coach, gameResult, moveKinds]);
@@ -322,8 +350,10 @@ export default function App() {
     if (mode !== "bot" || local.turn() !== "b" || local.isGameOver()) return;
     let active = true;
     const fen = local.fen();
+    const startedThinking = performance.now();
     setBotThinking(true);
-    void engine().search(fen, Math.round(botLevel * 20 / 11), 450).then(result => {
+    void engine("play").search(fen, Math.round(botLevel * 20 / 11), 450).then(async result => {
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2000 - (performance.now() - startedThinking))));
       if (!active) return;
       const full = new Chess();
       if (localPgn) full.loadPgn(localPgn);
@@ -441,9 +471,6 @@ export default function App() {
     setMoveKinds({});
     setDismissedResult(null);
     winReactionShown.current = false;
-    reactedPly.current.clear();
-    positiveReactionIndex.current = 0;
-    negativeReactionIndex.current = 0;
   }
 
   function startBot() {
@@ -457,9 +484,7 @@ export default function App() {
     setMoveBadges([]);
     setMoveKinds({});
     winReactionShown.current = false;
-    reactedPly.current.clear();
-    positiveReactionIndex.current = 0;
-    negativeReactionIndex.current = 0;
+    resetReactionHistory();
     setHintMove(null);
     setDismissedResult(null);
     setFlipped(false);
@@ -470,6 +495,7 @@ export default function App() {
   function newLocal() {
     setLocalPgn("");
     localStorage.removeItem("mchess.localPgn");
+    resetReactionHistory();
     startLocal();
   }
 
@@ -550,6 +576,7 @@ export default function App() {
       const game = new Chess();
       game.loadPgn(pgnInput.trim());
       if (!game.history().length) throw new Error("empty");
+      resetReactionHistory();
       setLocalPgn(game.pgn());
       localStorage.setItem("mchess.localPgn", game.pgn());
       setMode("local");
@@ -575,17 +602,13 @@ export default function App() {
     setMoveKinds(previous => previous[ply] === kind ? previous : { ...previous, [ply]: kind });
     if (mode === "online" || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
+    localStorage.setItem("mchess.reacted." + localGameId.current, JSON.stringify([...reactedPly.current]));
     if (mode === "bot" && coach === "Мелстрой") {
-      if (ply % 2 === 0) return;
-      const isPositive = ["brilliant", "great", "best", "excellent", "good", "book"].includes(kind);
-      const isNegative = ["inaccuracy", "mistake", "blunder", "missed-win"].includes(kind);
-      if (isPositive || isNegative) {
-        const clips = isPositive ? ["positive-20", "positive-23"] : ["negative-17", "negative-39"];
-        const index = isPositive ? positiveReactionIndex.current : negativeReactionIndex.current;
-        if (isPositive) positiveReactionIndex.current++;
-        else negativeReactionIndex.current++;
-        enqueueReaction(`/assets/reactions/verified/${clips[index % clips.length]}.webm`);
-      }
+      const cooldown = reactionFrequency === "rare" ? 20_000 : reactionFrequency === "balanced" ? 8_000 : 1_500;
+      if (Date.now() - lastGenericReactionAt.current < cooldown) return;
+      if (reactionActive.current && reactionQueue.current.length >= 3) return;
+      lastGenericReactionAt.current = Date.now();
+      enqueueReaction(nextMellstroyClip(kind, ply % 2 === 1));
     } else if (kind === "blunder" || kind === "missed-win") {
       const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
       enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
@@ -707,6 +730,7 @@ export default function App() {
             <div className="card leaderboard"><h2>Таблица рейтинга</h2>{leaderboard.length ? leaderboard.map((player, index) => <div key={player.id}><span>{index + 1}. {avatarGlyph[player.avatar]} {player.name}</span><strong>{player.rating} Эло</strong></div>) : <p>Пока нет игроков с десятью рейтинговыми партиями.</p>}</div>
             <h2>Тренеры</h2><p className="section-subtitle">Выберите стиль объяснений и реакций</p>
             <div className="coaches">{coaches.map((item) => <button className={"coach-card " + (coach === item.name ? "active" : "")} key={item.name} onClick={() => { setCoach(item.name); localStorage.setItem("mchess.coach", item.name); }}><img className="coach-image" src={item.image} alt={item.name} /><strong>{item.name}</strong><small>{item.role}</small></button>)}</div>
+            <div className="card media-settings"><h2>Видео и звук</h2><label><input type="checkbox" checked={videoEnabled} onChange={event => setVideoEnabled(event.target.checked)} /> Показывать видеореакции</label><label><input type="checkbox" checked={reactionMuted} onChange={event => setReactionMuted(event.target.checked)} /> Без звука</label><label>Частота реакций Мелстроя <select value={reactionFrequency} onChange={event => setReactionFrequency(event.target.value as "often" | "balanced" | "rare")} disabled={!videoEnabled}><option value="often">Часто</option><option value="balanced">Умеренно</option><option value="rare">Редко</option></select></label></div>
             <div className="card server-setting"><h2>Онлайн-сервер</h2><p>Для игры через интернет укажите HTTPS-адрес сервера MChess.</p><input type="url" placeholder="https://api.example.com" value={apiUrl} onChange={event => { setApiUrl(event.target.value.replace(/\/$/, "")); localStorage.setItem("mchess.apiUrl", event.target.value.replace(/\/$/, "")); }} aria-label="Адрес онлайн-сервера" /></div>
             <div className="card"><h2>Об игре</h2><p>MChess — шахматы, тренировки и разбор партий.<br />Автор — Ilua Burmalda</p></div>
             <div className="card"><h2>Новости и обновления</h2><p>Анонсы игры публикуются в Telegram-канале.</p><a href="https://t.me/WebIluxa" target="_blank" rel="noopener noreferrer">Открыть @WebIluxa</a></div>
@@ -719,7 +743,7 @@ export default function App() {
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><span>{icon}</span><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={reaction} onClose={finishReaction} />
+      <CoachReaction clip={reaction} muted={reactionMuted} onClose={finishReaction} />
     </div>
   );
 }

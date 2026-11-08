@@ -50,6 +50,9 @@ button:focus-visible { outline: 3px solid #d4b475; outline-offset: 2px; }
 .piece { position: absolute; z-index: 1; width: 88%; height: 88%; left: 6%; top: 6%; display: block; object-fit: contain; pointer-events: none; user-select: none; filter: drop-shadow(1px 2px 1px #16161660); }
 .piece-black { filter: drop-shadow(.8px 0 0 #f7f1e6) drop-shadow(-.8px 0 0 #f7f1e6) drop-shadow(0 .8px 0 #f7f1e6) drop-shadow(0 -.8px 0 #f7f1e6) drop-shadow(1px 2px 1px #0008); }
 .piece-white { filter: drop-shadow(1px 2px 1px #16161690); }
+.media-settings label { display: flex; align-items: center; gap: 12px; margin-top: 14px; color: #e9e2d5; }
+.media-settings input[type="checkbox"] { width: 22px; height: 22px; accent-color: #85af68; }
+.media-settings select { margin-left: auto; max-width: 160px; padding: 8px; border: 1px solid #726b5f; border-radius: 10px; background: #292924; color: #f7f1e8; }
 .square.last-move .piece { animation: piece-arrive .18s ease-out; }
 .square.hint-square { box-shadow: inset 0 0 0 4px #57c8d9; }
 .board-move-badge { position: absolute; z-index: 3; right: 1px; top: 1px; width: clamp(18px, 5.5vw, 27px); height: clamp(18px, 5.5vw, 27px); display: grid; place-items: center; filter: drop-shadow(0 2px 3px #0009); animation: badge-appear .24s cubic-bezier(.2,1.5,.4,1); pointer-events: none; }
