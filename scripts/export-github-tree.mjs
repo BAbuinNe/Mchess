@@ -11,7 +11,7 @@ async function walk(directory) {
   return result;
 }
 const sourceFiles = [".dockerignore", ".gitignore", "Dockerfile", "README.md", "package.json", "package-lock.json", ...await walk("apps/server"), ...await walk("apps/web/src"), ...await walk("apps/web/public"), ...await walk("scripts"), ...await walk("tests"), "apps/web/index.html", "apps/web/package.json", "apps/web/tsconfig.json", "apps/web/vite.config.ts", ...await walk("deploy-parts")];
-const files = [...new Set(sourceFiles)].filter(path => !path.includes("/dist/") && !path.includes("/node_modules/") && !path.includes("/.vite/") && !path.includes("/android/") && !path.includes("/build/") && !path.includes("/data/") && !/reaction_\d+\.webm$/.test(path) && !/\/coaches\/(magnus|hikaru|karpov|mellstroy)\.png$/.test(path));
+const files = [...new Set(sourceFiles)].filter(path => !path.includes("/dist/") && !path.includes("/node_modules/") && !path.includes("/.vite/") && !path.includes("/android/") && !path.includes("/build/") && !path.includes("/data/") && !/\/coaches\/(magnus|hikaru|karpov|mellstroy)\.png$/.test(path));
 const manifest = JSON.parse(await readFile("deploy-parts/manifest.json", "utf8"));
 const split = new Set(manifest.map(item => item.path));
 const chosen = files.filter(path => !split.has(path));
