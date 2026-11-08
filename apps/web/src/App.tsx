@@ -44,7 +44,7 @@ type Session = { roomId: string; seat: Seat; seatToken: string };
 
 const DEFAULT_API = window.location.port === "5173" && !Capacitor.isNativePlatform()
   ? `${window.location.protocol}//${window.location.hostname}:3001`
-  : "https://melchess.vercel.app";
+  : Capacitor.isNativePlatform() ? "https://mchess-online.onrender.com" : window.location.origin;
 const botLevels = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2400, 2800];
 const coaches = [
   { name: "Магнус Карлсен", role: "Позиция и эндшпиль", image: "/assets/coaches/magnus-portrait.png" },
@@ -108,7 +108,7 @@ export default function App() {
   const [moveKinds, setMoveKinds] = useState<Record<number, MoveKind>>({});
   const [pgnInput, setPgnInput] = useState("");
   const apiUrl = DEFAULT_API;
-  const hostedApi = apiUrl.includes(".vercel.app");
+  const hostedApi = apiUrl.includes(".vercel.app") || apiUrl.includes(".onrender.com");
   const [guestToken, setGuestToken] = useState(() => localStorage.getItem("mchess.guestToken") || "");
   const [guest, setGuest] = useState<GuestProfile | null>(null);
   const [leaderboard, setLeaderboard] = useState<GuestProfile[]>([]);

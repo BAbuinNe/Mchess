@@ -49,7 +49,7 @@ export default function NewsCenter({ apiUrl, introVisible }: { apiUrl: string; i
       socket.onclose = () => { if (active) retry = window.setTimeout(connect, 5000); };
     };
     void load();
-    if (apiUrl.includes(".vercel.app")) {
+    if (apiUrl.includes(".vercel.app") || apiUrl.includes(".onrender.com")) {
       const poll = window.setInterval(() => void load(), 30000);
       return () => { active = false; window.clearInterval(poll); };
     }
