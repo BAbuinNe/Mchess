@@ -29,6 +29,8 @@ try {
   while ((await history()).length < 2 && Date.now() - started < 15000) await page.waitForTimeout(200);
   assert.equal((await history()).length, 2, "trainer did not move");
   assert.ok(Date.now() - started >= 1900, "trainer did not wait two seconds");
+  await page.waitForTimeout(1000);
+  assert.equal(await page.evaluate(() => localStorage.getItem("mchess.mellstroyReactionCount")), "1", "trainer's own move triggered a video");
   process.stdout.write("Mellstroy video and two-second bot reply: OK\n");
 } finally {
   await browser.close();

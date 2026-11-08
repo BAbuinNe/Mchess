@@ -48,12 +48,13 @@ export function classify(before: EngineResult, after: EngineResult, move: Move, 
   const expected = centipawns(before);
   const actual = -centipawns(after);
   const loss = Math.max(0, winChance(expected) - winChance(actual));
+  const centipawnLoss = Math.max(0, expected - actual);
   const uci = move.from + move.to + (move.promotion || "");
   const engineBest = uci === before.move;
-  if (before.mate !== null && before.mate > 0 && after.mate === null && loss >= 8) return "missed-win";
-  if (loss >= 25) return "blunder";
-  if (loss >= 12) return "mistake";
-  if (loss >= 5) return "inaccuracy";
+  if (before.mate !== null && before.mate > 0 && after.mate === null) return "missed-win";
+  if (loss >= 20 || centipawnLoss >= 450 || (!engineBest && move.piece === "q" && sacrifice(game, move) && centipawnLoss >= 120)) return "blunder";
+  if (loss >= 10 || centipawnLoss >= 220) return "mistake";
+  if (loss >= 5 || centipawnLoss >= 100) return "inaccuracy";
   if (engineBest && before.depth >= 14 && after.depth >= 14 && sacrifice(game, move) && loss <= 1 && winChance(actual) >= 40) return "brilliant";
   if (engineBest && loss <= 1.5) return "best";
   if (loss <= 2) return "excellent";

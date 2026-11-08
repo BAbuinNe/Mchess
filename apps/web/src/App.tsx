@@ -600,7 +600,7 @@ export default function App() {
   function onMoveClassified(ply: number, kind: MoveKind, square: string) {
     setMoveBadges(previous => [...previous.filter(item => item.ply % 2 !== ply % 2 && item.ply < ply && item.square !== square), { ply, kind, square: square as Square }]);
     setMoveKinds(previous => previous[ply] === kind ? previous : { ...previous, [ply]: kind });
-    if (mode === "online" || reactedPly.current.has(ply)) return;
+    if (mode === "online" || (mode === "bot" && ply % 2 === 0) || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
     localStorage.setItem("mchess.reacted." + localGameId.current, JSON.stringify([...reactedPly.current]));
     if (mode === "bot" && coach === "Мелстрой") {
@@ -608,7 +608,7 @@ export default function App() {
       if (Date.now() - lastGenericReactionAt.current < cooldown) return;
       if (reactionActive.current && reactionQueue.current.length >= 3) return;
       lastGenericReactionAt.current = Date.now();
-      enqueueReaction(nextMellstroyClip(kind, ply % 2 === 1));
+      enqueueReaction(nextMellstroyClip(kind));
     } else if (kind === "blunder" || kind === "missed-win") {
       const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
       enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
