@@ -1,13 +1,13 @@
 import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 type Seat = "w" | "b";
-type Guest = { id: string; token: string; name: string; level: string; avatar: string; rating: number; ratedGames: number; wins: number; losses: number; draws: number; ratedRoomIds: string[] };
+type Guest = { id: string; token: string; name: string; level: string; avatar: string; rating: number; ratedGames: number; wins: number; losses: number; draws: number; ratedRoomIds: string[]; verified?: boolean };
 type Session = { roomId: string; seat: Seat; seatToken: string };
 type Ticket = { id: string; guestId: string; joinedAt: number; status: "waiting" | "matched" | "bot" | "cancelled"; session?: Session };
-type Room = { id: string; pgn: string; seats: Partial<Record<Seat, string>>; guestIds?: Partial<Record<Seat, string>>; createdAt: number; clocks: Record<Seat, number>; turnStartedAt?: number; incrementMs: number; rated?: boolean; ratingApplied?: boolean; resignedBy?: Seat; flagged?: Seat; drawOfferedBy?: Seat; drawAgreed?: boolean; seenMoveIds: string[] };
+type Room = { id: string; pgn: string; seats: Partial<Record<Seat, string>>; guestIds?: Partial<Record<Seat, string>>; createdAt: number; clocks: Record<Seat, number>; turnStartedAt?: number; incrementMs: number; rated?: boolean; ratingApplied?: boolean; ratingDelta?: Record<Seat, number>; resignedBy?: Seat; flagged?: Seat; drawOfferedBy?: Seat; drawAgreed?: boolean; seenMoveIds: string[] };
 type Data = { guests: Guest[]; tickets: Ticket[]; rooms: Room[]; announcements: { id: string; title: string; body: string; createdAt: number }[] };
 const PATH = "mchess/online-state-v1.json";
 const empty = (): Data => ({ guests: [], tickets: [], rooms: [], announcements: [] });
@@ -16,7 +16,7 @@ const token = () => randomBytes(24).toString("hex");
 const ratings: Record<string, number> = { beginner: 400, amateur: 1000, experienced: 1500, professional: 2000 };
 const avatars = new Set(["knight", "queen", "rook", "bishop", "king"]);
 const json = (res: ServerResponse, status: number, data: unknown) => { res.statusCode = status; res.setHeader("Content-Type", "application/json; charset=utf-8"); res.setHeader("Cache-Control", "no-store"); res.end(JSON.stringify(data)); };
-const publicGuest = (g: Guest) => ({ id: g.id, name: g.name, level: g.level, avatar: g.avatar, rating: g.rating, ratedGames: g.ratedGames, gamesToLeaderboard: Math.max(0, 10 - g.ratedGames), wins: g.wins, losses: g.losses, draws: g.draws });
+const publicGuest = (g: Guest) => ({ id: g.id, name: g.name, level: g.level, avatar: g.avatar, rating: g.rating, ratedGames: g.ratedGames, gamesToLeaderboard: Math.max(0, 10 - g.ratedGames), wins: g.wins, losses: g.losses, draws: g.draws, verified: Boolean(g.verified) });
 const auth = (data: Data, req: IncomingMessage) => data.guests.find(g => req.headers.authorization === `Bearer ${g.token}`);
 async function read(): Promise<{ data: Data; etag?: string }> {
   const current = await get(PATH, { access: "private", useCache: false });
@@ -64,7 +64,7 @@ function clocks(room: Room, game: Chess) {
 }
 function roomState(data: Data, room: Room) {
   const game = chess(room);
-  return { type: "state", roomId: room.id, fen: game.fen(), turn: game.turn(), moves: game.history(), pgn: room.pgn, whiteJoined: Boolean(room.seats.w), blackJoined: Boolean(room.seats.b), check: game.isCheck(), result: result(room, game), clocks: clocks(room, game), incrementMs: room.incrementMs, drawOfferedBy: room.drawOfferedBy || null, rated: Boolean(room.rated), whitePlayer: data.guests.find(g => g.id === room.guestIds?.w) ? publicGuest(data.guests.find(g => g.id === room.guestIds?.w)!) : null, blackPlayer: data.guests.find(g => g.id === room.guestIds?.b) ? publicGuest(data.guests.find(g => g.id === room.guestIds?.b)!) : null };
+  return { type: "state", roomId: room.id, fen: game.fen(), turn: game.turn(), moves: game.history(), pgn: room.pgn, whiteJoined: Boolean(room.seats.w), blackJoined: Boolean(room.seats.b), check: game.isCheck(), result: result(room, game), clocks: clocks(room, game), incrementMs: room.incrementMs, drawOfferedBy: room.drawOfferedBy || null, rated: Boolean(room.rated), ratingDelta: room.ratingDelta || null, whitePlayer: data.guests.find(g => g.id === room.guestIds?.w) ? publicGuest(data.guests.find(g => g.id === room.guestIds?.w)!) : null, blackPlayer: data.guests.find(g => g.id === room.guestIds?.b) ? publicGuest(data.guests.find(g => g.id === room.guestIds?.b)!) : null };
 }
 function settleRating(data: Data, room: Room) {
   if (!room.rated || room.ratingApplied || !room.guestIds?.w || !room.guestIds?.b) return;
@@ -74,8 +74,10 @@ function settleRating(data: Data, room: Room) {
   if (!w || !b) return;
   const score = outcome === "1-0" ? 1 : outcome === "0-1" ? 0 : 0.5;
   const expected = 1 / (1 + Math.pow(10, (b.rating - w.rating) / 400));
-  w.rating = Math.max(100, Math.round(w.rating + 32 * (score - expected)));
-  b.rating = Math.max(100, Math.round(b.rating + 32 * (1 - score - (1 - expected))));
+  const oldWhite = w.rating, oldBlack = b.rating;
+  w.rating = Math.max(100, Math.round(w.rating + (w.ratedGames < 10 ? 40 : 20) * (score - expected)));
+  b.rating = Math.max(100, Math.round(b.rating + (b.ratedGames < 10 ? 40 : 20) * (expected - score)));
+  room.ratingDelta = { w: w.rating - oldWhite, b: b.rating - oldBlack };
   for (const [g, s] of [[w, score], [b, 1 - score]] as const) { g.ratedGames++; g.ratedRoomIds.push(room.id); if (s === 1) g.wins++; else if (s === 0) g.losses++; else g.draws++; }
   room.ratingApplied = true;
 }
@@ -99,6 +101,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       return json(res, response.status, response.body);
     }
     if (method === "GET" && parts[0] === "me") { const data = (await read()).data; const guest = auth(data, req); return json(res, guest ? 200 : 401, guest ? publicGuest(guest) : { error: "unauthorized" }); }
+    if (method === "POST" && parts[0] === "me" && parts[1] === "promo") { const input = await body(req); const correct = createHash("sha256").update(String(input.code || "").trim()).digest("hex") === "810b66e9caf3d9120fbccf56f0d76551af47c5286c77e1cf7ba77c777a6be31e"; if (!correct) return json(res, 400, { error: "invalid_promo" }); const response = await update(data => { const guest = auth(data, req); if (!guest) return { status: 401, body: { error: "unauthorized" } }; if (guest.verified) return { status: 200, body: publicGuest(guest) }; guest.verified = true; return { status: 200, body: publicGuest(guest), dirty: true }; }); return json(res, response.status, response.body); }
     if (method === "GET" && parts[0] === "leaderboard") return json(res, 200, (await read()).data.guests.filter(g => g.ratedGames >= 10).sort((a,b) => b.rating - a.rating).slice(0,100).map(publicGuest));
     if (parts[0] === "matchmaking") {
       if (method === "POST" && !parts[1]) { const response = await update(data => {

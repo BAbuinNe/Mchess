@@ -20,7 +20,7 @@ type Seat = "w" | "b";
 type Level = "beginner" | "amateur" | "experienced" | "professional";
 type Avatar = "knight" | "queen" | "rook" | "bishop" | "king";
 const avatarGlyph: Record<Avatar, string> = { knight: "♞", queen: "♛", rook: "♜", bishop: "♝", king: "♚" };
-type GuestProfile = { id: string; name: string; level: Level; avatar: Avatar; rating: number; ratedGames: number; gamesToLeaderboard: number; wins: number; losses: number; draws: number };
+type GuestProfile = { id: string; name: string; level: Level; avatar: Avatar; rating: number; ratedGames: number; gamesToLeaderboard: number; wins: number; losses: number; draws: number; verified?: boolean };
 type OnlineState = {
   type: "state";
   roomId: string;
@@ -36,6 +36,7 @@ type OnlineState = {
   incrementMs: number;
   drawOfferedBy: Seat | null;
   rated?: boolean;
+  ratingDelta?: Record<Seat, number> | null;
   whitePlayer?: GuestProfile | null;
   blackPlayer?: GuestProfile | null;
 };
@@ -92,6 +93,8 @@ export default function App() {
   const [analysis, setAnalysis] = useState<EngineResult | null>(null);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [reaction, setReaction] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoOpponent, setPromoOpponent] = useState(false);
   const reactionQueue = useRef<string[]>([]);
   const reactionActive = useRef(false);
   const [videoEnabled, setVideoEnabled] = useState(() => localStorage.getItem("mchess.videoEnabled") !== "false");
@@ -126,10 +129,20 @@ export default function App() {
   const onlineRef = useRef<OnlineState | null>(null);
   const badReactionIndex = useRef(0);
   const brilliantReactionIndex = useRef(0);
+  const rookReactionIndex = useRef(0);
+  const cleanReactionIndex = useRef(0);
+  const cleanReactionShown = useRef(false);
   const lastGenericReactionAt = useRef(0);
   const winReactionShown = useRef(false);
   const localGameId = useRef(localStorage.getItem("mchess.localGameId") || crypto.randomUUID());
   const reactedPly = useRef(storedReactedPlies(localGameId.current));
+
+  useEffect(() => {
+    if (mode !== "online" || !session || !online?.blackJoined) return;
+    const rival = session.seat === "w" ? online.blackPlayer : online.whitePlayer;
+    const key = "mchess.promoSeen." + session.roomId;
+    if (rival?.verified && !localStorage.getItem(key)) { localStorage.setItem(key, "1"); setPromoOpponent(true); }
+  }, [mode, session, online?.blackJoined, online?.whitePlayer?.verified, online?.blackPlayer?.verified]);
 
   useEffect(() => { if (mode !== "online") localStorage.setItem("mchess.lastLocalMode", mode); }, [mode]);
   useEffect(() => { localStorage.setItem("mchess.botLevel", String(botLevel)); }, [botLevel]);
@@ -148,6 +161,8 @@ export default function App() {
     localGameId.current = crypto.randomUUID();
     localStorage.setItem("mchess.localGameId", localGameId.current);
     reactedPly.current.clear();
+    winReactionShown.current = false;
+    cleanReactionShown.current = false;
     lastGenericReactionAt.current = 0;
     reactionQueue.current = [];
     reactionActive.current = false;
@@ -264,6 +279,16 @@ export default function App() {
     }, 2600);
     return () => window.clearTimeout(timer);
   }, [mode, coach, gameResult, moveKinds]);
+
+  useEffect(() => {
+    if (mode === "online" || !gameResult || cleanReactionShown.current || winReactionShown.current) return;
+    const humanPlies = moves.map((_, index) => index + 1).filter(ply => mode !== "bot" || ply % 2 === 1);
+    if (humanPlies.length < 8 || humanPlies.some(ply => !moveKinds[ply])) return;
+    if (humanPlies.some(ply => ["mistake", "blunder", "missed-win"].includes(moveKinds[ply]))) return;
+    cleanReactionShown.current = true;
+    const clip = ["clean-game-1", "clean-game-2"][cleanReactionIndex.current++ % 2];
+    enqueueReaction(`/assets/reactions/events/${clip}.mp4`, true);
+  }, [mode, gameResult, moves.length, moveKinds]);
 
   useEffect(() => {
     if (gameResult && (mode === "bot" || mode === "online") && gameResult !== "1/2-1/2" && dismissedResult !== gameResult) vibrateForMate();
@@ -399,6 +424,17 @@ export default function App() {
     } catch { setNotice("Не удалось создать гостевой профиль. Проверьте сервер."); }
   }
 
+  async function redeemPromo() {
+    if (!guestToken) { setNotice("Сначала создайте гостевой профиль."); return; }
+    try {
+      const response = await fetch(apiUrl + "/api/me/promo", { method: "POST", headers: { Authorization: `Bearer ${guestToken}`, "Content-Type": "application/json" }, body: JSON.stringify({ code: promoCode }) });
+      if (!response.ok) throw new Error("invalid_promo");
+      setGuest(await response.json() as GuestProfile);
+      setPromoCode("");
+      setNotice("Промокод активирован: значок добавлен к нику.");
+    } catch { setNotice("Промокод не принят. Проверьте ввод и соединение."); }
+  }
+
   async function findMatch() {
     if (!guest || !guestToken) { setTab("profile"); setNotice("Создайте гостевой профиль для автоподбора."); return; }
     if (!validApi(apiUrl)) { setNotice("Укажите адрес онлайн-сервера в профиле."); return; }
@@ -473,6 +509,7 @@ export default function App() {
     setMoveKinds({});
     setDismissedResult(null);
     winReactionShown.current = false;
+    cleanReactionShown.current = false;
   }
 
   function startBot() {
@@ -486,6 +523,7 @@ export default function App() {
     setMoveBadges([]);
     setMoveKinds({});
     winReactionShown.current = false;
+    cleanReactionShown.current = false;
     resetReactionHistory();
     setHintMove(null);
     setDismissedResult(null);
@@ -544,6 +582,8 @@ export default function App() {
     }
     if (mode === "bot" && (botThinking || local.turn() !== "w")) return;
     try {
+      const checkedBefore = local.isCheck();
+      const movingPiece = local.get(from)?.type;
       local.move({ from, to, promotion: promotion || "q" });
       playMoveSound();
       setHintMove(null);
@@ -551,6 +591,7 @@ export default function App() {
       const pgn = local.pgn();
       setLocalPgn(pgn);
       localStorage.setItem("mchess.localPgn", pgn);
+      if (checkedBefore && movingPiece !== "k" && !local.isCheck()) enqueueReaction("/assets/reactions/events/check-block.mp4", true);
     } catch { /* board selection is already constrained to legal moves */ }
   }
 
@@ -606,10 +647,12 @@ export default function App() {
     reactedPly.current.add(ply);
     localStorage.setItem("mchess.reacted." + localGameId.current, JSON.stringify([...reactedPly.current]));
     if (kind === "blunder" || kind === "missed-win") {
-      const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
+      const clip = ["blunder-1", "blunder-2", "blunder-3", "blunder-new"][badReactionIndex.current++ % 4];
       enqueueReaction(`/assets/reactions/events/${clip}.mp4`, true);
     } else if (kind === "brilliant") {
-      const clip = piece === "r" ? "brilliant-rook" : ["brilliant-1", "brilliant-2"][brilliantReactionIndex.current++ % 2];
+      const clip = piece === "r"
+        ? ["brilliant-rook", "brilliant-rook-new"][rookReactionIndex.current++ % 2]
+        : ["brilliant-1", "brilliant-2", "brilliant-new-1", "brilliant-new-2"][brilliantReactionIndex.current++ % 4];
       enqueueReaction(`/assets/reactions/events/${clip}.mp4`, true);
     } else if (mode === "bot" && coach === "Мелстрой") {
       const cooldown = reactionFrequency === "rare" ? 20_000 : reactionFrequency === "balanced" ? 8_000 : 1_500;
@@ -626,7 +669,7 @@ export default function App() {
     <div className="player-line">
       <div className="mini-avatar">{mode === "bot" && color === "b" && coachImage ? <img src={coachImage} alt="" /> : mode === "online" && (color === "w" ? online?.whitePlayer : online?.blackPlayer)?.avatar ? avatarGlyph[(color === "w" ? online?.whitePlayer : online?.blackPlayer)!.avatar] : color === "w" ? "♔" : "♚"}</div>
       <div>
-        <strong>{mode === "bot" && color === "b" ? coach : mode === "online" ? (color === "w" ? online?.whitePlayer?.name : online?.blackPlayer?.name) || (color === "w" ? "Белые" : "Чёрные") : color === "w" ? "Белые" : "Чёрные"}</strong>
+        <strong>{mode === "bot" && color === "b" ? coach : mode === "online" ? ((color === "w" ? online?.whitePlayer?.name : online?.blackPlayer?.name) || (color === "w" ? "Белые" : "Чёрные")) + ((color === "w" ? online?.whitePlayer?.verified : online?.blackPlayer?.verified) ? " ✓" : "") : color === "w" ? "Белые" : "Чёрные"}</strong>
         <small>{mode === "online" && (color === "w" ? online?.whitePlayer : online?.blackPlayer) ? `${color === "w" ? online?.whitePlayer?.rating : online?.blackPlayer?.rating} Эло${session?.seat === color ? " · Вы" : ""}` : mode === "online" && session?.seat === color ? "Вы" : mode === "online" && color === "b" && !online?.blackJoined ? "Ожидание друга" : mode === "bot" && color === "b" ? (botThinking ? "Думает… · " : "Тренер · ") + botLevels[botLevel] + " Эло" : "Игрок"}</small>
       </div>
       {mode === "online" && online && <span className="clock-pill">{clock(online.clocks[color])}</span>}
@@ -703,6 +746,7 @@ export default function App() {
               {resultOutcome === "draw" ? <div className="result-emblem">½</div> : <ResultAnimation outcome={resultOutcome} />}
               <h2>{gameResult === "1/2-1/2" ? "Ничья" : mode === "local" ? (gameResult === "1-0" ? "Победа белых" : "Победа чёрных") : playerWon ? "Победа!" : "Поражение"}</h2>
               <p>{gameResult === "1/2-1/2" ? "Равная борьба до конца." : "Посмотрите ходы и разберите ключевые моменты партии."}</p>
+              {mode === "online" && online?.rated && online.ratingDelta && session && <p className="rating-change">Рейтинг: {online.ratingDelta[session.seat] >= 0 ? "+" : ""}{online.ratingDelta[session.seat]} Эло</p>}
               {openingReport && <p className="opening-result"><strong>Дебют:</strong> {openingReport.opening}<br /><strong>Гамбит:</strong> {openingReport.gambit}</p>}
               <div className="result-actions"><button onClick={() => { setDismissedResult(gameResult); setTab("analysis"); }}>Отчёт о партии</button><button onClick={() => setDismissedResult(gameResult)}>Посмотреть доску</button><button onClick={mode === "bot" ? startBot : newLocal}>Новая партия</button></div>
             </div></div>}
@@ -726,12 +770,13 @@ export default function App() {
         {tab === "learn" && <Training lesson />}
 
         {tab === "profile" && (
-          <section className="page profile-page"><div className="profile-hero"><div className="avatar large">{guest ? avatarGlyph[guest.avatar] : "♞"}</div><div><h1>{guest?.name || "Гость"}</h1><p>{guest ? `${guest.rating} Эло · ${guest.ratedGames} рейтинговых партий` : "Выберите уровень и создайте профиль"}<br />Выбранный тренер: {coach}</p></div></div>
+          <section className="page profile-page"><div className="profile-hero"><div className="avatar large">{guest ? avatarGlyph[guest.avatar] : "♞"}</div><div><h1>{guest?.name || "Гость"}{guest?.verified ? " ✓" : ""}</h1><p>{guest ? `${guest.rating} Эло · ${guest.ratedGames} рейтинговых партий` : "Выберите уровень и создайте профиль"}<br />Выбранный тренер: {coach}</p></div></div>
             {guest ? <div className="card"><h2>Рейтинг онлайн</h2><p>{guest.gamesToLeaderboard ? `До таблицы рейтинга осталось ${guest.gamesToLeaderboard} партий с людьми.` : "Ваш рейтинг участвует в таблице."}<br />Побед: {guest.wins} · Поражений: {guest.losses} · Ничьих: {guest.draws}</p><button onClick={() => void findMatch()}>Найти соперника</button></div> : <div className="card guest-signup"><h2>Гостевой профиль</h2><input value={guestName} maxLength={24} onChange={event => setGuestName(event.target.value)} placeholder="Ваше имя" aria-label="Ваше имя" /><select value={guestLevel} onChange={event => setGuestLevel(event.target.value as Level)} aria-label="Ваш уровень"><option value="beginner">Начинающий · 400 Эло</option><option value="amateur">Любитель · 1000 Эло</option><option value="experienced">Опытный · 1500 Эло</option><option value="professional">Профессионал · 2000 Эло</option></select><div className="avatar-options" aria-label="Выберите аватар">{(Object.keys(avatarGlyph) as Avatar[]).map(choice => <button className={choice === guestAvatar ? "selected" : ""} type="button" key={choice} onClick={() => setGuestAvatar(choice)} aria-label={`Аватар ${choice}`}>{avatarGlyph[choice]}</button>)}</div><button onClick={() => void registerGuest()}>Создать профиль</button></div>}
             <div className="card leaderboard"><h2>Таблица рейтинга</h2>{leaderboard.length ? leaderboard.map((player, index) => <div key={player.id}><span>{index + 1}. {avatarGlyph[player.avatar]} {player.name}</span><strong>{player.rating} Эло</strong></div>) : <p>Пока нет игроков с десятью рейтинговыми партиями.</p>}</div>
             <h2>Тренеры</h2><p className="section-subtitle">Выберите стиль объяснений и реакций</p>
             <div className="coaches">{coaches.map((item) => <button className={"coach-card " + (coach === item.name ? "active" : "")} key={item.name} onClick={() => { setCoach(item.name); localStorage.setItem("mchess.coach", item.name); }}><img className="coach-image" src={item.image} alt={item.name} /><strong>{item.name}</strong><small>{item.role}</small></button>)}</div>
             <div className="card media-settings"><h2>Видео и звук</h2><label><input type="checkbox" checked={videoEnabled} onChange={event => setVideoEnabled(event.target.checked)} /> Показывать видеореакции</label><label><input type="checkbox" checked={reactionMuted} onChange={event => setReactionMuted(event.target.checked)} /> Без звука</label><label>Частота реакций Мелстроя <select value={reactionFrequency} onChange={event => setReactionFrequency(event.target.value as "often" | "balanced" | "rare")} disabled={!videoEnabled}><option value="often">Часто</option><option value="balanced">Умеренно</option><option value="rare">Редко</option></select></label></div>
+            <div className="card promo-setting"><h2>Промокод</h2><input value={promoCode} onChange={event => setPromoCode(event.target.value)} placeholder="Введите промокод" aria-label="Промокод" /><button onClick={() => void redeemPromo()}>Применить</button>{guest?.verified && <p>Значок возле ника активирован ✓</p>}</div>
             <div className="card"><h2>Об игре</h2><p>MChess — шахматы, тренировки и разбор партий.<br />Автор — Ilua Burmalda</p></div>
             <div className="card"><h2>Новости и обновления</h2><p>Анонсы игры публикуются в Telegram-канале.</p><a href="https://t.me/WebIluxa" target="_blank" rel="noopener noreferrer">Открыть @WebIluxa</a></div>
           </section>
@@ -743,7 +788,7 @@ export default function App() {
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><span>{icon}</span><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={reaction} muted={reactionMuted} onClose={finishReaction} />
+      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4" : reaction} muted={reactionMuted} unskippable={promoOpponent} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
     </div>
   );
 }

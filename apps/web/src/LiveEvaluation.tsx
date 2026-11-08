@@ -117,7 +117,7 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     for (let index = 0; index < moves.length; index++) {
       const beforeFen = replay.fen();
       replay.move(moves[index].san);
-      if (index < moves.length - 2 || scheduled.current.has(index + 1)) continue;
+      if (scheduled.current.has(index + 1)) continue;
       const afterFen = replay.fen();
       const move = moves[index];
       const ply = index + 1;
