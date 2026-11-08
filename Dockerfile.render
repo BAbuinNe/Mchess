@@ -1,0 +1,19 @@
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/server/package.json apps/server/package.json
+COPY apps/web/package.json apps/web/package.json
+RUN npm ci
+COPY apps/web apps/web
+COPY scripts scripts
+COPY deploy-parts deploy-parts
+RUN node scripts/restore-deploy-assets.mjs && npm run build -w @mchess/web
+
+FROM node:24-bookworm-slim
+WORKDIR /app
+ENV NODE_ENV=production PORT=10000
+COPY --from=build /app/apps/web/dist apps/web/dist
+COPY apps/proxy/main.mjs apps/proxy/main.mjs
+EXPOSE 10000
+CMD ["node", "apps/proxy/main.mjs"]
+
