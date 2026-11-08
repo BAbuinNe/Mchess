@@ -139,8 +139,8 @@ export default function App() {
   function enqueueReaction(clip: string, priority = false) {
     if (!videoEnabledRef.current) return;
     if (!reactionActive.current) { reactionActive.current = true; setReaction(clip); }
+    else if (priority) { reactionQueue.current.unshift(clip); reactionQueue.current.length = Math.min(3, reactionQueue.current.length); }
     else if (reactionQueue.current.length < 3) reactionQueue.current.push(clip);
-    else if (priority) reactionQueue.current[reactionQueue.current.length - 1] = clip;
   }
   function resetReactionHistory() {
     localGameId.current = crypto.randomUUID();
@@ -252,7 +252,7 @@ export default function App() {
   }, [mode, gameResult, guestToken, apiUrl]);
 
   useEffect(() => {
-    if (mode === "online" || (mode === "bot" && coach === "Мелстрой") || !gameResult || gameResult === "1/2-1/2" || winReactionShown.current) return;
+    if (mode === "online" || !gameResult || gameResult === "1/2-1/2" || winReactionShown.current) return;
     const winningParity = gameResult === "1-0" ? 1 : 0;
     const brilliantCount = Object.entries(moveKinds).filter(([ply, kind]) => kind === "brilliant" && Number(ply) % 2 === winningParity).length;
     if (brilliantCount < 2) return;
@@ -353,7 +353,7 @@ export default function App() {
     const startedThinking = performance.now();
     setBotThinking(true);
     void engine("play").search(fen, Math.round(botLevel * 20 / 11), 450).then(async result => {
-      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 2000 - (performance.now() - startedThinking))));
+      await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 3000 - (performance.now() - startedThinking))));
       if (!active) return;
       const full = new Chess();
       if (localPgn) full.loadPgn(localPgn);
@@ -597,25 +597,24 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  function onMoveClassified(ply: number, kind: MoveKind, square: string) {
+  function onMoveClassified(ply: number, kind: MoveKind, square: string, piece: string) {
     setMoveBadges(previous => [...previous.filter(item => item.ply % 2 !== ply % 2 && item.ply < ply && item.square !== square), { ply, kind, square: square as Square }]);
     setMoveKinds(previous => previous[ply] === kind ? previous : { ...previous, [ply]: kind });
     if (mode === "online" || (mode === "bot" && ply % 2 === 0) || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
     localStorage.setItem("mchess.reacted." + localGameId.current, JSON.stringify([...reactedPly.current]));
-    if (mode === "bot" && coach === "Мелстрой") {
+    if (kind === "blunder" || kind === "missed-win") {
+      const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
+      enqueueReaction(`/assets/reactions/events/${clip}.mp4`, true);
+    } else if (kind === "brilliant") {
+      const clip = piece === "r" ? "brilliant-rook" : ["brilliant-1", "brilliant-2"][brilliantReactionIndex.current++ % 2];
+      enqueueReaction(`/assets/reactions/events/${clip}.mp4`, true);
+    } else if (mode === "bot" && coach === "Мелстрой") {
       const cooldown = reactionFrequency === "rare" ? 20_000 : reactionFrequency === "balanced" ? 8_000 : 1_500;
       if (Date.now() - lastGenericReactionAt.current < cooldown) return;
       if (reactionActive.current && reactionQueue.current.length >= 3) return;
       lastGenericReactionAt.current = Date.now();
       enqueueReaction(nextMellstroyClip(kind));
-    } else if (kind === "blunder" || kind === "missed-win") {
-      const clip = ["blunder-1", "blunder-2", "blunder-3"][badReactionIndex.current++ % 3];
-      enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
-    } else if (kind === "brilliant") {
-      const played = local.history({ verbose: true })[ply - 1];
-      const clip = played?.piece === "r" ? "brilliant-rook" : ["brilliant-1", "brilliant-2"][brilliantReactionIndex.current++ % 2];
-      enqueueReaction(`/assets/reactions/events/${clip}.mp4`);
     }
   }
 
@@ -747,3 +746,4 @@ export default function App() {
     </div>
   );
 }
+

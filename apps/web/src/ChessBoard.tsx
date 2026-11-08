@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { Chess, type Square } from "chess.js";
 import MoveIcon from "./MoveIcon";
 import type { MoveKind } from "./LiveEvaluation";
@@ -20,7 +20,7 @@ const pieceName: Record<string, string> = {
 };
 
 function pieceUrl(color: string, type: string) {
-  return `/assets/pieces/livius/${color}${type}.svg`;
+  return `/assets/pieces/livius/${color}${type}.svg?v=3`;
 }
 
 export default function ChessBoard({ fen, onMove, side = "both", orientation = "w", lastMove, moveBadge, moveBadges, hintMove, compact = false }: Props) {
@@ -28,6 +28,8 @@ export default function ChessBoard({ fen, onMove, side = "both", orientation = "
   const [pendingPromotion, setPendingPromotion] = useState<{ from: Square; to: Square } | null>(null);
   const pointerStart = useRef<Square | null>(null);
   const suppressClick = useRef(false);
+  const squareRects = useRef(new Map<string, DOMRect>());
+  const lastAnimatedMove = useRef("");
   const chess = useMemo(() => new Chess(fen), [fen]);
   const legal = useMemo(() => selected ? chess.moves({ square: selected, verbose: true }) : [], [chess, selected]);
   const targets = new Set(legal.map(move => move.to));
@@ -38,6 +40,27 @@ export default function ChessBoard({ fen, onMove, side = "both", orientation = "
     : null;
 
   useEffect(() => { setSelected(null); setPendingPromotion(null); }, [fen]);
+
+  useLayoutEffect(() => {
+    const signature = lastMove ? `${lastMove.from}-${lastMove.to}` : "";
+    if (signature && signature !== lastAnimatedMove.current) {
+      const origin = squareRects.current.get(lastMove!.from);
+      const target = document.querySelector<HTMLElement>(`.board-grid [data-square="${lastMove!.to}"] .piece`);
+      const destination = target?.getBoundingClientRect();
+      if (origin && destination && target?.animate) {
+        target.animate([
+          { transform: `translate(${origin.left - destination.left}px, ${origin.top - destination.top}px) scale(.98)` },
+          { transform: "translate(0, 0) scale(1)" }
+        ], { duration: 190, easing: "cubic-bezier(.2,.75,.25,1)" });
+      }
+      lastAnimatedMove.current = signature;
+    }
+    const nextRects = new Map<string, DOMRect>();
+    document.querySelectorAll<HTMLElement>(".board-grid [data-square]").forEach(square => {
+      nextRects.set(square.dataset.square!, square.getBoundingClientRect());
+    });
+    squareRects.current = nextRects;
+  }, [fen, lastMove]);
 
   function canSelect(square: Square) {
     const piece = chess.get(square);

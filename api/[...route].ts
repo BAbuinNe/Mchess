@@ -1,4 +1,4 @@
-import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
+import { get, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -29,8 +29,7 @@ async function update(change: (data: Data) => { status: number; body: unknown; d
     const result = change(data);
     if (!result.dirty) return result;
     try {
-      const metadata = etag ? await head(PATH) : null;
-      await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(metadata ? { ifMatch: metadata.etag } : {}) });
+      await put(PATH, JSON.stringify(data), { access: "private", contentType: "application/json", allowOverwrite: Boolean(etag), ...(etag ? { ifMatch: etag } : {}) });
       return result;
     } catch (error) {
       if (error instanceof BlobPreconditionFailedError || (error instanceof Error && /already exists|precondition/i.test(error.message))) continue;
@@ -118,7 +117,7 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
         else if (kind === "offer_draw") room.drawOfferedBy = player;
         else if (kind === "accept_draw" && room.drawOfferedBy && room.drawOfferedBy !== player) room.drawAgreed = true;
         else if (kind === "decline_draw" && room.drawOfferedBy && room.drawOfferedBy !== player) room.drawOfferedBy = undefined;
-        else if (kind === "move") { const from = String(input.from || ""), to = String(input.to || ""); if (!/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) return { status: 400, body: { error: "invalid_move" } }; if (game.turn() !== player) return { status: 409, body: { error: "not_your_turn" } }; const moveId = player + ":" + String(input.clientMoveId || ""); if (input.clientMoveId && room.seenMoveIds.includes(moveId)) return { status: 200, body: roomState(data, room) }; const elapsed = room.turnStartedAt ? Date.now() - room.turnStartedAt : 0; if (room.clocks[player] - elapsed <= 0) { room.flagged = player; room.turnStartedAt = undefined; } else { try { game.move({ from, to, promotion: String(input.promotion || "q") }); } catch { return { status: 400, body: { error: "illegal_move" } }; } room.pgn = game.pgn(); room.clocks[player] = Math.max(0, room.clocks[player] - elapsed) + room.incrementMs; room.turnStartedAt = Date.now(); room.drawOfferedBy = undefined; if (input.clientMoveId) room.seenMoveIds.push(moveId); } }
+        else if (kind === "move") { const from = String(input.from || ""), to = String(input.to || ""); if (!/^[a-h][1-8]$/.test(from) || !/^[a-h][1-8]$/.test(to)) return { status: 400, body: { error: "invalid_move" } }; const moveId = player + ":" + String(input.clientMoveId || ""); if (input.clientMoveId && room.seenMoveIds.includes(moveId)) return { status: 200, body: roomState(data, room) }; if (game.turn() !== player) return { status: 409, body: { error: "not_your_turn" } }; const elapsed = room.turnStartedAt ? Date.now() - room.turnStartedAt : 0; if (room.clocks[player] - elapsed <= 0) { room.flagged = player; room.turnStartedAt = undefined; } else { try { game.move({ from, to, promotion: String(input.promotion || "q") }); } catch { return { status: 400, body: { error: "illegal_move" } }; } room.pgn = game.pgn(); room.clocks[player] = Math.max(0, room.clocks[player] - elapsed) + room.incrementMs; room.turnStartedAt = Date.now(); room.drawOfferedBy = undefined; if (input.clientMoveId) room.seenMoveIds.push(moveId); } }
         else return { status: 400, body: { error: "invalid_action" } };
         if (result(room, game)) room.turnStartedAt = undefined;
         settleRating(data, room);

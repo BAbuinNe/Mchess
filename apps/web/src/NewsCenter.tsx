@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Announcement = { id: string; title: string; body: string; createdAt: number };
 const TELEGRAM_URL = "https://t.me/WebIluxa";
@@ -68,17 +69,17 @@ export default function NewsCenter({ apiUrl, introVisible }: { apiUrl: string; i
 
   return <>
     <button className="header-action news-button" type="button" onClick={() => setOpen(true)} aria-label="Новости и уведомления"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9Z"/><path d="M10 21h4"/></svg>{unread && <span className="news-dot" />}</button>
-    {!introVisible && invite && <div className="news-overlay" role="dialog" aria-label="Новости MChess в Telegram"><div className="news-dialog">
+    {!introVisible && invite && createPortal(<div className="news-overlay" role="dialog" aria-label="Новости MChess в Telegram"><div className="news-dialog">
       <span className="news-emblem">♞</span><h2>Новости MChess</h2>
       <p>Обновления, новые функции и новости игры публикуются в Telegram-канале. Подпишитесь, чтобы ничего не пропустить.</p>
       <a className="news-primary" href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer" onClick={closeInvite}>Открыть @WebIluxa</a>
       <button type="button" onClick={closeInvite}>Не сейчас</button>
-    </div></div>}
-    {!introVisible && !invite && open && <div className="news-overlay" role="dialog" aria-label="Новости и уведомления"><div className="news-dialog news-list">
+    </div></div>, document.body)}
+    {!introVisible && !invite && open && createPortal(<div className="news-overlay" role="dialog" aria-label="Новости и уведомления"><div className="news-dialog news-list">
       <div className="news-title"><h2>Новости MChess</h2><button type="button" onClick={closeNews} aria-label="Закрыть новости">×</button></div>
       {items.length ? items.map(item => <article key={item.id}><time>{new Date(item.createdAt).toLocaleString("ru-RU")}</time><h3>{item.title}</h3><p>{item.body}</p></article>) : <p>Пока нет объявлений.</p>}
       <a href={TELEGRAM_URL} target="_blank" rel="noopener noreferrer">Наш Telegram-канал</a>
-    </div></div>}
+    </div></div>, document.body)}
   </>;
 }
 
