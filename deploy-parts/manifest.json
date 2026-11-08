@@ -26,11 +26,28 @@
     ]
   },
   {
+    "path": "apps/web/public/assets/reactions/events/brilliant-new-2.mp4",
+    "hash": "6a386277ec8a5c9e8caa6a1a02f654d38236fbd2b2c189c9023de3e15081dc49",
+    "parts": [
+      "deploy-parts/6a386277ec8a5c9e-0.part",
+      "deploy-parts/6a386277ec8a5c9e-1.part",
+      "deploy-parts/6a386277ec8a5c9e-2.part"
+    ]
+  },
+  {
     "path": "apps/web/public/assets/reactions/events/brilliant-rook.mp4",
     "hash": "4c6663644ab76cc0d64f78deed636d1d29d9c599d384954535498e43d6526125",
     "parts": [
       "deploy-parts/4c6663644ab76cc0-0.part",
       "deploy-parts/4c6663644ab76cc0-1.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/brilliant-rook-new.mp4",
+    "hash": "2e057a7b52078510730a5a30367fb1e1c382d50312f8ca94897faa8d7f5534c6",
+    "parts": [
+      "deploy-parts/2e057a7b52078510-0.part",
+      "deploy-parts/2e057a7b52078510-1.part"
     ]
   },
   {
@@ -40,6 +57,35 @@
       "deploy-parts/8e4d9594a4312b5c-0.part",
       "deploy-parts/8e4d9594a4312b5c-1.part",
       "deploy-parts/8e4d9594a4312b5c-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/clean-game-1.mp4",
+    "hash": "a4391b4bb9cd2acffcdba06bbeb46eb82e79eeedd06e9d41a6c094aac782d354",
+    "parts": [
+      "deploy-parts/a4391b4bb9cd2acf-0.part",
+      "deploy-parts/a4391b4bb9cd2acf-1.part",
+      "deploy-parts/a4391b4bb9cd2acf-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/clean-game-2.mp4",
+    "hash": "957d133341ca87c097c0e5ffe9f6de2f771b05b8b33b3b87fcc8fb0dc83a0317",
+    "parts": [
+      "deploy-parts/957d133341ca87c0-0.part",
+      "deploy-parts/957d133341ca87c0-1.part",
+      "deploy-parts/957d133341ca87c0-2.part"
+    ]
+  },
+  {
+    "path": "apps/web/public/assets/reactions/events/promo-opponent.mp4",
+    "hash": "0f04c716085506afdfb07c69ed7a29bf5e6590ed009548d6437a1b4dd09f6b64",
+    "parts": [
+      "deploy-parts/0f04c716085506af-0.part",
+      "deploy-parts/0f04c716085506af-1.part",
+      "deploy-parts/0f04c716085506af-2.part",
+      "deploy-parts/0f04c716085506af-3.part",
+      "deploy-parts/0f04c716085506af-4.part"
     ]
   },
   {
@@ -53,3 +99,4 @@
     ]
   }
 ]
+

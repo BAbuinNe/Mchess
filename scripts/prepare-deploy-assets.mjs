@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 const files = [
   "apps/web/public/assets/intro/intro.mp4",
-  ...["blunder-1", "blunder-2", "blunder-3", "brilliant-1", "brilliant-2", "brilliant-rook", "brilliant-win"].map(name => `apps/web/public/assets/reactions/events/${name}.mp4`),
+  ...["blunder-1", "blunder-2", "blunder-3", "blunder-new", "brilliant-1", "brilliant-2", "brilliant-new-1", "brilliant-new-2", "brilliant-rook", "brilliant-rook-new", "brilliant-win", "check-block", "clean-game-1", "clean-game-2", "promo-opponent"].map(name => `apps/web/public/assets/reactions/events/${name}.mp4`),
   ...["negative-17", "negative-39", "positive-20", "positive-23"].map(name => `apps/web/public/assets/reactions/verified/${name}.webm`),
   "apps/web/public/assets/results/defeat.mp4",
   "apps/web/public/assets/results/victory.mp4",
@@ -27,3 +27,4 @@ for (const path of files) {
 }
 await writeFile(join("deploy-parts", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 process.stdout.write(`Prepared ${manifest.length} split assets in ${manifest.reduce((total, item) => total + item.parts.length, 0)} parts.\n`);
+
