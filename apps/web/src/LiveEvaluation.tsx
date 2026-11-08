@@ -11,7 +11,7 @@ const positionCache = new Map<string, EngineResult>();
 async function evaluatePosition(fen: string) {
   const cached = positionCache.get(fen);
   if (cached) return cached;
-  const result = await engine().search(fen, 20, 650);
+  const result = await engine().search(fen, 20, 850, 2);
   if (result.depth >= 10 && (result.score !== null || result.mate !== null)) {
     if (positionCache.size >= 256) positionCache.delete(positionCache.keys().next().value!);
     positionCache.set(fen, result);
@@ -36,12 +36,17 @@ function centipawns(result: EngineResult) {
 // won position from being treated like the same change in an equal position.
 function winChance(cp: number) { return 100 / (1 + Math.exp(-0.00368208 * cp)); }
 
-function sacrifice(game: Chess, move: Move) {
+function sacrifice(game: Chess, move: Move, continuation: EngineResult) {
   const pieceValue: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-  if (pieceValue[move.piece] < 3) return false;
+  if (pieceValue[move.piece] < 3 || (move.captured && pieceValue[move.captured] >= pieceValue[move.piece])) return false;
   const after = new Chess(game.fen());
-  const replies = after.moves({ verbose: true });
-  return replies.some(reply => reply.to === move.to && Boolean(reply.captured) && pieceValue[reply.piece] < pieceValue[move.piece]);
+  const bestReply = continuation.pv[0];
+  const capture = after.moves({ verbose: true }).find(reply =>
+    reply.from + reply.to + (reply.promotion || "") === bestReply && reply.to === move.to && Boolean(reply.captured) && pieceValue[reply.piece] < pieceValue[move.piece]);
+  if (!capture) return false;
+  after.move(capture);
+  const recapture = after.moves({ verbose: true }).some(reply => reply.to === move.to && Boolean(reply.captured) && pieceValue[reply.piece] <= pieceValue[move.piece]);
+  return !recapture;
 }
 
 export function classify(before: EngineResult, after: EngineResult, move: Move, game: Chess): MoveKind {
@@ -52,10 +57,12 @@ export function classify(before: EngineResult, after: EngineResult, move: Move, 
   const uci = move.from + move.to + (move.promotion || "");
   const engineBest = uci === before.move;
   if (before.mate !== null && before.mate > 0 && after.mate === null) return "missed-win";
-  if (loss >= 20 || centipawnLoss >= 450 || (!engineBest && move.piece === "q" && sacrifice(game, move) && centipawnLoss >= 120)) return "blunder";
+  if (loss >= 20 || centipawnLoss >= 450) return "blunder";
   if (loss >= 10 || centipawnLoss >= 220) return "mistake";
   if (loss >= 5 || centipawnLoss >= 100) return "inaccuracy";
-  if (engineBest && before.depth >= 14 && after.depth >= 14 && sacrifice(game, move) && loss <= 1 && winChance(actual) >= 40) return "brilliant";
+  if (engineBest && before.depth >= 14 && after.depth >= 14 && sacrifice(game, move, after) && loss <= 2 && winChance(actual) >= 40 && winChance(expected) < 85) return "brilliant";
+  const second = before.secondMate !== null && before.secondMate !== undefined ? Math.sign(before.secondMate) * (10000 - Math.abs(before.secondMate) * 100) : before.secondScore;
+  if (engineBest && before.secondDepth && before.secondDepth >= 14 && second !== null && second !== undefined && winChance(expected) - winChance(second) >= 15 && loss <= 2 && winChance(actual) >= 40) return "great";
   if (engineBest && loss <= 1.5) return "best";
   if (loss <= 2) return "excellent";
   return "good";

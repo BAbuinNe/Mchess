@@ -1,4 +1,4 @@
-export type EngineResult = { move: string; depth: number; score: number | null; mate: number | null; pv: string[] };
+export type EngineResult = { move: string; depth: number; score: number | null; mate: number | null; pv: string[]; secondScore?: number | null; secondMate?: number | null; secondDepth?: number };
 
 class StockfishEngine {
   private worker = new Worker("/engine/stockfish-19-lite-single.js");
@@ -28,7 +28,7 @@ class StockfishEngine {
     });
   }
 
-  search(fen: string, skill = 20, movetime = 500): Promise<EngineResult> {
+  search(fen: string, skill = 20, movetime = 500, multipv = 1): Promise<EngineResult> {
     const task = this.queue.then(async () => {
       await this.ready;
       return new Promise<EngineResult>((resolve, reject) => {
@@ -36,6 +36,9 @@ class StockfishEngine {
         let score: number | null = null;
         let mate: number | null = null;
         let pv: string[] = [];
+        let secondScore: number | null = null;
+        let secondMate: number | null = null;
+        let secondDepth = 0;
         const timeout = window.setTimeout(() => {
           this.worker.postMessage("stop");
           this.listener = null;
@@ -47,6 +50,14 @@ class StockfishEngine {
             const cp = line.match(/\bscore cp (-?\d+)/);
             const m = line.match(/\bscore mate (-?\d+)/);
             const variation = line.match(/\bpv (.+)$/);
+            const rank = Number(line.match(/\bmultipv (\d+)/)?.[1] || 1);
+            if (rank === 2 && d && Number(d[1]) >= secondDepth) {
+              secondDepth = Number(d[1]);
+              if (cp) { secondScore = Number(cp[1]); secondMate = null; }
+              if (m) { secondMate = Number(m[1]); secondScore = null; }
+              return;
+            }
+            if (rank !== 1) return;
             if (d && Number(d[1]) >= depth) {
               depth = Number(d[1]);
               if (cp) { score = Number(cp[1]); mate = null; }
@@ -59,9 +70,10 @@ class StockfishEngine {
           this.listener = null;
           const move = line.split(/\s+/)[1];
           if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move)) reject(new Error("Stockfish не нашёл ход"));
-          else resolve({ move, depth, score, mate, pv });
+          else resolve({ move, depth, score, mate, pv, secondScore, secondMate, secondDepth });
         };
         this.worker.postMessage("setoption name Skill Level value " + Math.max(0, Math.min(20, skill)));
+        this.worker.postMessage("setoption name MultiPV value " + (multipv === 2 ? 2 : 1));
         this.worker.postMessage("position fen " + fen);
         this.worker.postMessage("go movetime " + movetime);
       });
@@ -76,3 +88,4 @@ export function engine(purpose: "analysis" | "play" = "analysis"): StockfishEngi
   if (!instances[purpose]) instances[purpose] = new StockfishEngine();
   return instances[purpose];
 }
+
