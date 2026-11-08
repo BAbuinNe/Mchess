@@ -21,9 +21,10 @@ These items are based on the repository README and manifests; verify a feature i
 - Any feature whose README description may have changed since this status note.
 
 ## Current verification entry
-- GitHub Actions run on Ubuntu: `npm ci`, Playwright setup, and `npm run build` passed.
-- The E2E run stopped in `tests/board.e2e.mjs`: after a bot-game move, the test timed out waiting for `.move-feedback`. No application code changed in this PR; the result does not establish whether the failure is platform-specific.
-- The workflow now uses Windows, matching the test scripts' default Chrome path/platform assumptions. Confirm its next Actions result before treating E2E as green.
+- GitHub Actions on both Ubuntu and Windows: dependency installation, Playwright setup, and `npm run build` passed.
+- On both runners, E2E stopped in `tests/board.e2e.mjs` after a bot-game move because `.move-feedback` did not appear within 45 seconds.
+- This PR changes no application source. The test failure remains unresolved; do not report the E2E suite as passing.
+- Next step: inspect why the bot/position-analysis flow does not produce `.move-feedback` in the browser test, then rerun the focused scenario and full suite.
 
 ## Handoff format
 For meaningful project work, append or replace a short entry with:
