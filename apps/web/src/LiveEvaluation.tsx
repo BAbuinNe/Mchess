@@ -5,7 +5,7 @@ import MoveIcon from "./MoveIcon";
 import { isBookLine, loadOpeningBook } from "./openingBook";
 
 export type MoveKind = "brilliant" | "great" | "best" | "excellent" | "good" | "book" | "inaccuracy" | "mistake" | "blunder" | "missed-win";
-type Evaluation = { score: number; kind: MoveKind; san: string; depth: number; moveNumber: number };
+type Evaluation = { score: number | null; kind: MoveKind; san: string; depth: number; moveNumber: number };
 const positionCache = new Map<string, EngineResult>();
 
 async function evaluatePosition(fen: string) {
@@ -61,7 +61,7 @@ export function classify(before: EngineResult, after: EngineResult, move: Move, 
   return "good";
 }
 
-export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: string; active: boolean; onClassified?: (ply: number, kind: MoveKind, square: string) => void }) {
+export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: string; active: boolean; onClassified?: (ply: number, kind: MoveKind, square: string, piece: string) => void }) {
   const [value, setValue] = useState<Evaluation | null>(null);
   const [history, setHistory] = useState<Record<number, Evaluation>>({});
   const [busy, setBusy] = useState(false);
@@ -120,14 +120,22 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
       void (async () => {
         const entries = await loadOpeningBook().catch(() => []);
         const isBook = isBookLine(san.slice(0, ply), entries);
-        const before = isBook ? null : await evaluatePosition(beforeFen);
+        if (isBook) {
+          const result: Evaluation = { score: null, kind: "book", san: move.san, depth: 0, moveNumber: ply };
+          if (currentGeneration !== generation.current) return;
+          setHistory(previous => ({ ...previous, [ply]: result }));
+          setValue(previous => previous && previous.moveNumber > ply ? previous : result);
+          onClassified?.(ply, "book", move.to, move.piece);
+          return;
+        }
+        const before = await evaluatePosition(beforeFen);
         const after = await evaluatePosition(afterFen);
         if (currentGeneration !== generation.current) return;
-        if ((!isBook && (!before || (before.score === null && before.mate === null) || before.depth < 10)) || (after.score === null && after.mate === null) || after.depth < 10) return;
-        const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: isBook ? "book" as const : classify(before!, after, move, new Chess(afterFen)), san: move.san, depth: before ? Math.min(before.depth, after.depth) : after.depth, moveNumber: ply };
+        if ((before.score === null && before.mate === null) || before.depth < 10 || (after.score === null && after.mate === null) || after.depth < 10) return;
+        const result = { score: (move.color === "w" ? -1 : 1) * centipawns(after), kind: classify(before, after, move, new Chess(afterFen)), san: move.san, depth: Math.min(before.depth, after.depth), moveNumber: ply };
         setHistory(previous => ({ ...previous, [ply]: result }));
         setValue(previous => previous && previous.moveNumber > ply ? previous : result);
-        onClassified?.(ply, result.kind, move.to);
+        onClassified?.(ply, result.kind, move.to, move.piece);
       })().catch(() => { if (currentGeneration === generation.current) scheduled.current.delete(ply); })
         .finally(() => { if (currentGeneration === generation.current) { running.current -= 1; setBusy(running.current > 0); } });
     }
@@ -137,9 +145,10 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
   const score = value?.score ?? 0;
   const whiteShare = Math.max(5, Math.min(95, 50 + 45 * Math.tanh(score / 400)));
   return <div className="live-evaluation" aria-live="polite">
-    <div className="eval-summary"><div className="eval-row"><strong>Оценка позиции</strong><span>{busy ? "Анализ…" : value ? (score >= 0 ? "+" : "") + (score / 100).toFixed(2) + " за белых" : "Равная позиция"}</span></div>
+    <div className="eval-summary"><div className="eval-row"><strong>Оценка позиции</strong><span>{busy ? "Анализ…" : value?.score === null ? "Оценка уточняется" : value ? (score >= 0 ? "+" : "") + (score / 100).toFixed(2) + " за белых" : "Равная позиция"}</span></div>
       <div className="eval-track" role="meter" aria-label="Преимущество белых" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(whiteShare)}><div style={{ width: whiteShare + "%" }} /></div></div>
-    <div className="eval-detail">{value && !busy && <div className="move-feedback"><MoveIcon kind={value.kind} /><strong>{value.san} — {labels[value.kind]}</strong><small>Глубина {value.depth} · ход {value.moveNumber}</small></div>}
+    <div className="eval-detail">{value && <div className="move-feedback"><MoveIcon kind={value.kind} /><strong>{value.san} — {labels[value.kind]}</strong><small>{value.kind === "book" ? "Подтверждено базой дебютов" : `Глубина ${value.depth}`} · ход {value.moveNumber}</small></div>}
       {Object.keys(history).length > 0 && <div className="evaluated-moves" aria-label="Оценка ходов">{Object.values(history).sort((a, b) => a.moveNumber - b.moveNumber).map(item => <span key={item.moveNumber} title={labels[item.kind]}><b>{Math.ceil(item.moveNumber / 2)}{item.moveNumber % 2 ? "." : "..."}</b> {item.san} <MoveIcon kind={item.kind} size={19} /></span>)}</div>}</div>
   </div>;
 }
+
