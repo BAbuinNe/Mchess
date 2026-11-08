@@ -1,4 +1,4 @@
-const CACHE = "mchess-v4";
+const CACHE = "mchess-v5";
 const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/engine/stockfish-19-lite-single.js", "/engine/stockfish-19-lite-single.wasm"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
@@ -9,6 +9,8 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   const request = event.request;
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
+  // Media players request byte ranges. A cached 206 response corrupts later playback.
+  if (request.headers.has("range") || /\.(mp4|webm)$/i.test(new URL(request.url).pathname)) return;
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).then(response => {
       const copy = response.clone();

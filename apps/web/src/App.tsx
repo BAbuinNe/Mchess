@@ -817,7 +817,7 @@ export default function App() {
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><UIIcon name={icon} /><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4" : reaction} muted={reactionMuted} unskippable={promoOpponent} onPlayed={() => { if (promoOpponent && session) localStorage.setItem("mchess.promoSeen.v2." + session.roomId, "1"); }} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
+      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4?v=2" : reaction} muted={reactionMuted} unskippable={promoOpponent} onPlayed={() => { if (promoOpponent && session) localStorage.setItem("mchess.promoSeen.v2." + session.roomId, "1"); }} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
     </div>
   );
 }
