@@ -41,7 +41,9 @@ type OnlineState = {
 };
 type Session = { roomId: string; seat: Seat; seatToken: string };
 
-const DEFAULT_API = import.meta.env.VITE_API_URL || (Capacitor.isNativePlatform() ? "https://mchess-one.vercel.app" : window.location.port === "5173" ? `${window.location.protocol}//${window.location.hostname}:3001` : window.location.origin);
+const DEFAULT_API = window.location.port === "5173" && !Capacitor.isNativePlatform()
+  ? `${window.location.protocol}//${window.location.hostname}:3001`
+  : "https://melchess.vercel.app";
 const botLevels = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2400, 2800];
 const coaches = [
   { name: "Магнус Карлсен", role: "Позиция и эндшпиль", image: "/assets/coaches/magnus-portrait.png" },
@@ -102,7 +104,7 @@ export default function App() {
   videoEnabledRef.current = videoEnabled;
   const [moveKinds, setMoveKinds] = useState<Record<number, MoveKind>>({});
   const [pgnInput, setPgnInput] = useState("");
-  const [apiUrl, setApiUrl] = useState(() => localStorage.getItem("mchess.apiUrl") || DEFAULT_API);
+  const apiUrl = DEFAULT_API;
   const hostedApi = apiUrl.includes(".vercel.app");
   const [guestToken, setGuestToken] = useState(() => localStorage.getItem("mchess.guestToken") || "");
   const [guest, setGuest] = useState<GuestProfile | null>(null);
@@ -730,7 +732,6 @@ export default function App() {
             <h2>Тренеры</h2><p className="section-subtitle">Выберите стиль объяснений и реакций</p>
             <div className="coaches">{coaches.map((item) => <button className={"coach-card " + (coach === item.name ? "active" : "")} key={item.name} onClick={() => { setCoach(item.name); localStorage.setItem("mchess.coach", item.name); }}><img className="coach-image" src={item.image} alt={item.name} /><strong>{item.name}</strong><small>{item.role}</small></button>)}</div>
             <div className="card media-settings"><h2>Видео и звук</h2><label><input type="checkbox" checked={videoEnabled} onChange={event => setVideoEnabled(event.target.checked)} /> Показывать видеореакции</label><label><input type="checkbox" checked={reactionMuted} onChange={event => setReactionMuted(event.target.checked)} /> Без звука</label><label>Частота реакций Мелстроя <select value={reactionFrequency} onChange={event => setReactionFrequency(event.target.value as "often" | "balanced" | "rare")} disabled={!videoEnabled}><option value="often">Часто</option><option value="balanced">Умеренно</option><option value="rare">Редко</option></select></label></div>
-            <div className="card server-setting"><h2>Онлайн-сервер</h2><p>Для игры через интернет укажите HTTPS-адрес сервера MChess.</p><input type="url" placeholder="https://api.example.com" value={apiUrl} onChange={event => { setApiUrl(event.target.value.replace(/\/$/, "")); localStorage.setItem("mchess.apiUrl", event.target.value.replace(/\/$/, "")); }} aria-label="Адрес онлайн-сервера" /></div>
             <div className="card"><h2>Об игре</h2><p>MChess — шахматы, тренировки и разбор партий.<br />Автор — Ilua Burmalda</p></div>
             <div className="card"><h2>Новости и обновления</h2><p>Анонсы игры публикуются в Telegram-канале.</p><a href="https://t.me/WebIluxa" target="_blank" rel="noopener noreferrer">Открыть @WebIluxa</a></div>
           </section>

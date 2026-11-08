@@ -1,4 +1,4 @@
-import { get, put, BlobPreconditionFailedError } from "@vercel/blob";
+import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -21,11 +21,16 @@ const auth = (data: Data, req: IncomingMessage) => data.guests.find(g => req.hea
 async function read(): Promise<{ data: Data; etag?: string }> {
   const current = await get(PATH, { access: "private", useCache: false });
   if (!current || current.statusCode !== 200) return { data: empty() };
-  return { data: JSON.parse(await new Response(current.stream).text()) as Data, etag: current.blob.etag };
+  const data = JSON.parse(await new Response(current.stream).text()) as Data;
+  const metadata = await head(PATH);
+  if (!metadata || current.blob.etag.replaceAll('"', '') !== metadata.etag.replaceAll('"', '')) throw new Error("state_changed_during_read");
+  return { data, etag: metadata.etag };
 }
 async function update(change: (data: Data) => { status: number; body: unknown; dirty?: boolean }): Promise<{ status: number; body: unknown }> {
   for (let attempt = 0; attempt < 8; attempt++) {
-    const { data, etag } = await read();
+    let snapshot;
+    try { snapshot = await read(); } catch (error) { if (error instanceof Error && error.message === "state_changed_during_read") continue; throw error; }
+    const { data, etag } = snapshot;
     const result = change(data);
     if (!result.dirty) return result;
     try {
