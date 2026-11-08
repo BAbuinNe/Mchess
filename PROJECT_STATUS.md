@@ -21,8 +21,9 @@ These items are based on the repository README and manifests; verify a feature i
 - Any feature whose README description may have changed since this status note.
 
 ## Current verification entry
-- This documentation/agent-guidance change adds a GitHub Actions workflow to build the workspaces and run the repository's E2E scripts with Playwright Chromium.
-- Record the actual workflow outcome here after GitHub Actions completes; do not infer a pass from creating the workflow.
+- GitHub Actions run on Ubuntu: `npm ci`, Playwright setup, and `npm run build` passed.
+- The E2E run stopped in `tests/board.e2e.mjs`: after a bot-game move, the test timed out waiting for `.move-feedback`. No application code changed in this PR; the result does not establish whether the failure is platform-specific.
+- The workflow now uses Windows, matching the test scripts' default Chrome path/platform assumptions. Confirm its next Actions result before treating E2E as green.
 
 ## Handoff format
 For meaningful project work, append or replace a short entry with:
