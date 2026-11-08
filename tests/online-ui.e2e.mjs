@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 
-const port = 32000 + Math.floor(Math.random() * 10000);
+const port = 3001;
 const api = `http://127.0.0.1:${port}`;
 await mkdir("data", { recursive: true });
 const dataDir = await mkdtemp(join(process.cwd(), "data", "online-ui-"));
@@ -20,7 +20,7 @@ try {
   }
   const pages = await Promise.all([browser.newPage({ viewport: { width: 393, height: 850 } }), browser.newPage({ viewport: { width: 393, height: 850 } })]);
   for (const [index, page] of pages.entries()) {
-    await page.addInitScript(url => { localStorage.setItem("mchess.apiUrl", url); localStorage.setItem("mchess.telegramInviteDismissed", "1"); }, api);
+    await page.addInitScript(() => { localStorage.setItem("mchess.telegramInviteDismissed", "1"); localStorage.setItem("mchess.introSeen", "1"); });
     await page.goto("http://127.0.0.1:5173/");
     await page.getByRole("button", { name: "Профиль", exact: true }).first().click();
     await page.getByRole("textbox", { name: "Ваше имя" }).fill(index ? "Борис" : "Алиса");
@@ -44,3 +44,4 @@ try {
   await frontend.close();
   backend.kill();
 }
+

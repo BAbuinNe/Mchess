@@ -14,6 +14,8 @@ import { playMoveSound, vibrateForMate } from "./gameFeedback";
 import NewsCenter from "./NewsCenter";
 import IntroScreen from "./IntroScreen";
 import { nextMellstroyClip } from "./mellstroyClips";
+import VerifiedBadge from "./VerifiedBadge";
+import UIIcon from "./UIIcon";
 
 type Tab = "home" | "newgame" | "play" | "puzzles" | "learn" | "profile" | "analysis";
 type Seat = "w" | "b";
@@ -86,6 +88,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [online, setOnline] = useState<OnlineState | null>(null);
   const [notice, setNotice] = useState("");
+  useEffect(() => { if (!notice) return; const timer = window.setTimeout(() => setNotice(""), 4000); return () => window.clearTimeout(timer); }, [notice]);
   const [connected, setConnected] = useState(false);
   const [coach, setCoach] = useState(() => localStorage.getItem("mchess.coach") || "Магнус Карлсен");
   const [botLevel, setBotLevel] = useState(() => Math.max(0, Math.min(botLevels.length - 1, Number(localStorage.getItem("mchess.botLevel") ?? 3) || 0)));
@@ -127,6 +130,8 @@ export default function App() {
   const [flipped, setFlipped] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const onlineRef = useRef<OnlineState | null>(null);
+  const pendingOnlineMove = useRef<number | null>(null);
+  useEffect(() => { pendingOnlineMove.current = null; }, [session?.roomId]);
   const badReactionIndex = useRef(0);
   const brilliantReactionIndex = useRef(0);
   const rookReactionIndex = useRef(0);
@@ -140,9 +145,9 @@ export default function App() {
   useEffect(() => {
     if (mode !== "online" || !session || !online?.blackJoined) return;
     const rival = session.seat === "w" ? online.blackPlayer : online.whitePlayer;
-    const key = "mchess.promoSeen." + session.roomId;
-    if (rival?.verified && !localStorage.getItem(key)) { localStorage.setItem(key, "1"); setPromoOpponent(true); }
-  }, [mode, session, online?.blackJoined, online?.whitePlayer?.verified, online?.blackPlayer?.verified]);
+    const key = "mchess.promoSeen.v2." + session.roomId;
+    if (rival?.verified && !localStorage.getItem(key) && !promoOpponent) setPromoOpponent(true);
+  }, [mode, session, promoOpponent, online?.blackJoined, online?.whitePlayer?.verified, online?.blackPlayer?.verified]);
 
   useEffect(() => { if (mode !== "online") localStorage.setItem("mchess.lastLocalMode", mode); }, [mode]);
   useEffect(() => { localStorage.setItem("mchess.botLevel", String(botLevel)); }, [botLevel]);
@@ -190,7 +195,7 @@ export default function App() {
       .then(response => response.ok ? response.json() as Promise<GuestProfile> : Promise.reject())
       .then(profile => { if (active) setGuest(profile); })
       .catch(() => { if (active) setGuest(null); });
-    return () => { active = false; };
+    return () => { active = false; setBotThinking(false); };
   }, [guestToken, apiUrl]);
 
   useEffect(() => {
@@ -327,17 +332,24 @@ export default function App() {
     if (!session || !validApi(apiUrl)) return;
     if (hostedApi) {
       let active = true;
+      let refreshing = false;
       const refresh = async () => {
+        if (refreshing) return;
+        refreshing = true;
         try {
           const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId), { cache: "no-store" });
           if (!response.ok) throw new Error("room_unavailable");
           const state = await response.json() as OnlineState;
           if (!active) return;
-          if (state.moves.length > (onlineRef.current?.moves.length ?? state.moves.length)) playMoveSound();
+          const pending = pendingOnlineMove.current;
+          if (pending !== null && state.moves.length <= pending) { setConnected(true); return; }
+          if (state.moves.length > (onlineRef.current?.moves.length ?? state.moves.length) && (pending === null || state.moves.length > pending + 1)) playMoveSound();
+          if (pending !== null) pendingOnlineMove.current = null;
           onlineRef.current = state;
           setOnline(state);
           setConnected(true);
         } catch { if (active) setConnected(false); }
+        finally { refreshing = false; }
       };
       void refresh();
       const interval = window.setInterval(() => void refresh(), 1200);
@@ -367,10 +379,13 @@ export default function App() {
       const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId) + "/action?token=" + encodeURIComponent(session.seatToken), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(message) });
       const data = await response.json() as OnlineState | { error: string };
       if (!response.ok || !("type" in data) || data.type !== "state") throw new Error("error" in data ? data.error : "server_error");
-      onlineRef.current = data;
-      setOnline(data);
-      if (message.type === "move") playMoveSound();
-    } catch (error) { setNotice("Ход не принят сервером: " + (error instanceof Error ? error.message : "ошибка сети")); }
+      pendingOnlineMove.current = null;
+      if (data.moves.length >= (onlineRef.current?.moves.length ?? 0)) { onlineRef.current = data; setOnline(data); }
+    } catch (error) {
+      pendingOnlineMove.current = null;
+      if (onlineRef.current) setOnline(onlineRef.current);
+      setNotice("Ход не принят сервером: " + (error instanceof Error ? error.message : "ошибка сети"));
+    }
   }
 
   useEffect(() => {
@@ -520,6 +535,7 @@ export default function App() {
     setSession(null);
     setOnline(null);
     setMode("bot");
+    setBotThinking(false);
     setMoveBadges([]);
     setMoveKinds({});
     winReactionShown.current = false;
@@ -544,6 +560,7 @@ export default function App() {
     const game = new Chess();
     if (localPgn) game.loadPgn(localPgn);
     if (!game.history().length) return;
+    setBotThinking(false);
     game.undo();
     if (mode === "bot" && game.turn() === "b" && game.history().length) game.undo();
     const pgn = game.pgn();
@@ -574,9 +591,19 @@ export default function App() {
 
   function move(from: Square, to: Square, promotion?: string) {
     if (mode === "online") {
-      if (!connected || !session || online?.turn !== session.seat || online?.result) return;
+      if (!connected || !session || !online || online.turn !== session.seat || online.result || pendingOnlineMove.current !== null) return;
       const message = { type: "move", from, to, promotion, clientMoveId: crypto.randomUUID() };
-      if (hostedApi) void hostedAction(message);
+      if (hostedApi) {
+        try {
+          const game = new Chess();
+          if (online.pgn) game.loadPgn(online.pgn);
+          game.move({ from, to, promotion: promotion || "q" });
+          pendingOnlineMove.current = online.moves.length;
+          setOnline({ ...online, fen: game.fen(), pgn: game.pgn(), moves: game.history(), turn: game.turn(), check: game.isCheck() });
+          playMoveSound();
+          void hostedAction(message);
+        } catch { setNotice("Недопустимый ход"); }
+      }
       else socketRef.current?.send(JSON.stringify(message));
       return;
     }
@@ -641,9 +668,10 @@ export default function App() {
   }
 
   function onMoveClassified(ply: number, kind: MoveKind, square: string, piece: string) {
+    if (mode === "online" && (!session || ply % 2 !== (session.seat === "w" ? 1 : 0))) return;
     setMoveBadges(previous => [...previous.filter(item => item.ply % 2 !== ply % 2 && item.ply < ply && item.square !== square), { ply, kind, square: square as Square }]);
     setMoveKinds(previous => previous[ply] === kind ? previous : { ...previous, [ply]: kind });
-    if (mode === "online" || (mode === "bot" && ply % 2 === 0) || reactedPly.current.has(ply)) return;
+    if ((mode === "online" && ply !== moves.length) || (mode === "bot" && ply % 2 === 0) || reactedPly.current.has(ply)) return;
     reactedPly.current.add(ply);
     localStorage.setItem("mchess.reacted." + localGameId.current, JSON.stringify([...reactedPly.current]));
     if (kind === "blunder" || kind === "missed-win") {
@@ -669,7 +697,7 @@ export default function App() {
     <div className="player-line">
       <div className="mini-avatar">{mode === "bot" && color === "b" && coachImage ? <img src={coachImage} alt="" /> : mode === "online" && (color === "w" ? online?.whitePlayer : online?.blackPlayer)?.avatar ? avatarGlyph[(color === "w" ? online?.whitePlayer : online?.blackPlayer)!.avatar] : color === "w" ? "♔" : "♚"}</div>
       <div>
-        <strong>{mode === "bot" && color === "b" ? coach : mode === "online" ? ((color === "w" ? online?.whitePlayer?.name : online?.blackPlayer?.name) || (color === "w" ? "Белые" : "Чёрные")) + ((color === "w" ? online?.whitePlayer?.verified : online?.blackPlayer?.verified) ? " ✓" : "") : color === "w" ? "Белые" : "Чёрные"}</strong>
+        <div className="verified-name"><strong>{mode === "bot" && color === "b" ? coach : mode === "online" ? ((color === "w" ? online?.whitePlayer?.name : online?.blackPlayer?.name) || (color === "w" ? "Белые" : "Чёрные")) : color === "w" ? "Белые" : "Чёрные"}</strong>{mode === "online" && (color === "w" ? online?.whitePlayer?.verified : online?.blackPlayer?.verified) && <VerifiedBadge self={session?.seat === color} />}</div>
         <small>{mode === "online" && (color === "w" ? online?.whitePlayer : online?.blackPlayer) ? `${color === "w" ? online?.whitePlayer?.rating : online?.blackPlayer?.rating} Эло${session?.seat === color ? " · Вы" : ""}` : mode === "online" && session?.seat === color ? "Вы" : mode === "online" && color === "b" && !online?.blackJoined ? "Ожидание друга" : mode === "bot" && color === "b" ? (botThinking ? "Думает… · " : "Тренер · ") + botLevels[botLevel] + " Эло" : "Игрок"}</small>
       </div>
       {mode === "online" && online && <span className="clock-pill">{clock(online.clocks[color])}</span>}
@@ -682,10 +710,10 @@ export default function App() {
       {showIntro && <IntroScreen onFinish={() => setShowIntro(false)} />}
       <header className="topbar">
         <button className="brand" onClick={() => setTab("home")} type="button">{tab === "play" ? <span className="back-arrow">‹</span> : <img className="brand-mark" src="/icon-192.png" alt="" />} MChess</button>
-        <div className="header-actions"><NewsCenter apiUrl={apiUrl} introVisible={showIntro} /><button className="header-action" onClick={() => setTab("profile")} type="button" aria-label="Профиль">⚙</button></div>
+        <div className="header-actions"><NewsCenter apiUrl={apiUrl} introVisible={showIntro} /><button className="header-action" onClick={() => setTab("profile")} type="button" aria-label="Профиль"><UIIcon name="settings" /></button></div>
       </header>
 
-      {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрыть">×</button></div>}
+      {notice && <div className={"notice " + (/не удалось|ошибк|недопустим|отклонён|недоступен/i.test(notice) ? "notice-error" : /ищем|подключ|ожидан/i.test(notice) ? "notice-info" : "notice-success")} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Закрыть">×</button></div>}
 
       <main>
         {tab === "home" && (
@@ -698,9 +726,9 @@ export default function App() {
             <ChessBoard fen={currentFen} compact />
             <button className="primary-button" onClick={() => setTab("newgame")}>▶ &nbsp; Играть</button>
             <div className="quick-actions">
-              <button onClick={startBot}><span>♟</span> Играть с ботом</button>
-              <button onClick={() => void createRoom()}><span>♧</span> Играть с другом</button>
-              <button onClick={() => setTab("analysis")}><span>▥</span> Партия</button>
+              <button onClick={startBot}><UIIcon name="bot" /> Играть с ботом</button>
+              <button onClick={() => void createRoom()}><UIIcon name="friends" /> Играть с другом</button>
+              <button onClick={() => setTab("analysis")}><UIIcon name="board" /> Партия</button>
             </div>
             {matchTicket ? <div className="match-search"><strong>Поиск соперника: {searchSeconds} / 30 с</strong><span>Диапазон ±200 Эло. Затем нерейтинговый бот.</span><button onClick={() => void cancelMatch()}>Отменить поиск</button></div> : <button className="primary-button match-button" onClick={() => void findMatch()}>⚔ &nbsp; Онлайн-подбор</button>}
             <div className="join-room"><input aria-label="Код комнаты" placeholder="Код комнаты друга" value={joinCode} onChange={event => setJoinCode(event.target.value.trim())} /><button onClick={() => void joinRoom(joinCode)} disabled={!joinCode}>Войти</button></div>
@@ -716,12 +744,12 @@ export default function App() {
             <div className="time-control"><span className="time-icon">◷</span><span><strong>10 минут</strong><small>Онлайн · по 10 минут каждому игроку</small></span></div>
             {matchTicket ? <div className="match-search"><strong>Ищем соперника · {searchSeconds} / 30 с</strong><span>Рейтинг ±200 Эло. Если игрок не найдётся, начнётся партия с ботом.</span><button onClick={() => void cancelMatch()}>Отменить поиск</button></div> : <button className="primary-button new-game-start" onClick={() => void findMatch()}>Начать онлайн-партию</button>}
             <div className="game-options">
-              <button onClick={() => void createRoom()}><span className="option-icon">♧</span><span><strong>Играть с другом</strong><small>Создать комнату и отправить приглашение</small></span><b>›</b></button>
-              <button onClick={() => setShowJoin(value => !value)}><span className="option-icon">⌁</span><span><strong>Войти по коду</strong><small>Присоединиться к комнате друга</small></span><b>›</b></button>
+              <button onClick={() => void createRoom()}><span className="option-icon"><UIIcon name="friends" size={28} /></span><span><strong>Играть с другом</strong><small>Создать комнату и отправить приглашение</small></span><b>›</b></button>
+              <button onClick={() => setShowJoin(value => !value)}><span className="option-icon"><UIIcon name="play" size={28} /></span><span><strong>Войти по коду</strong><small>Присоединиться к комнате друга</small></span><b>›</b></button>
               {showJoin && <div className="join-room"><input aria-label="Код комнаты" placeholder="Код комнаты друга" value={joinCode} onChange={event => setJoinCode(event.target.value.trim())} /><button onClick={() => void joinRoom(joinCode)} disabled={!joinCode}>Войти</button></div>}
-              <button onClick={() => { setCoach("Магнус Карлсен"); startBot(); }}><span className="option-icon">♟</span><span><strong>Играть с ботом</strong><small>Шахматный соперник с выбором Эло</small></span><b>›</b></button>
-              <button onClick={startBot}><span className="option-icon">♞</span><span><strong>Играть с тренером</strong><small>{coach} · подсказки и разбор ходов</small></span><b>›</b></button>
-              <button onClick={newLocal}><span className="option-icon">♙</span><span><strong>На одном устройстве</strong><small>Партия для двух игроков рядом</small></span><b>›</b></button>
+              <button onClick={() => { setCoach("Магнус Карлсен"); startBot(); }}><span className="option-icon"><UIIcon name="bot" size={28} /></span><span><strong>Играть с ботом</strong><small>Шахматный соперник с выбором Эло</small></span><b>›</b></button>
+              <button onClick={startBot}><span className="option-icon"><UIIcon name="coach" size={28} /></span><span><strong>Играть с тренером</strong><small>{coach} · подсказки и разбор ходов</small></span><b>›</b></button>
+              <button onClick={newLocal}><span className="option-icon"><UIIcon name="board" size={28} /></span><span><strong>На одном устройстве</strong><small>Партия для двух игроков рядом</small></span><b>›</b></button>
             </div>
             <div className="game-config"><label>Уровень бота и тренера <select value={botLevel} onChange={event => setBotLevel(Number(event.target.value))}>{botLevels.map((level, i) => <option key={level} value={i}>{level} Эло</option>)}</select></label><button onClick={() => setTab("profile")}>Выбрать тренера <span>›</span></button></div>
           </section>
@@ -733,14 +761,15 @@ export default function App() {
             {playerLine(orientation === "w" ? "b" : "w", false)}
             {mode === "bot" && <label className="bot-level">Уровень тренера <select value={botLevel} onChange={event => setBotLevel(Number(event.target.value))}>{botLevels.map((level, i) => <option key={level} value={i}>{level} Эло</option>)}</select></label>}
             {board}
-            <LiveEvaluation pgn={localPgn} active={mode !== "online"} onClassified={onMoveClassified} />
+            <LiveEvaluation key={mode === "online" ? `${session?.roomId || ""}:${session?.seat || ""}` : "local"} pgn={mode === "online" ? online?.pgn || "" : localPgn} active={mode !== "online" || Boolean(session)} onlyColor={mode === "online" ? session?.seat : undefined} showPanel={mode !== "online"} onClassified={onMoveClassified} />
             {playerLine(orientation, true)}
             {mode === "online" && <button className="primary-button" onClick={() => void copyInvite()}>{Capacitor.isNativePlatform() ? "Скопировать код комнаты" : "Пригласить по ссылке"}</button>}
             <div className="quick-actions">
               {mode === "bot" ? <><button onClick={undoMove} disabled={!moves.length}>↶ &nbsp; Отмена</button><button onClick={() => void showHint()} disabled={hintBusy || botThinking || currentFen.split(" ")[1] !== "w"}>✦ &nbsp; {hintBusy ? "Думаю…" : "Подсказка"}</button><button onClick={() => setFlipped(value => !value)}>⇅ &nbsp; Доска</button></> : <><button onClick={() => setTab("analysis")}>☰ &nbsp; Ходы</button><button onClick={() => setFlipped(value => !value)}>⇅ &nbsp; Перевернуть</button><button onClick={mode === "online" ? resign : newLocal}>{mode === "online" ? "⚑ Сдаться" : "↺ Новая"}</button></>}
             </div>
             {mode === "bot" && <button className="new-game-button" onClick={startBot}>Новая партия</button>}
-            {mode === "online" && !gameResult && <div className="draw-actions">{online?.drawOfferedBy && online.drawOfferedBy !== session?.seat ? <><span>Соперник предлагает ничью</span><button onClick={() => drawAction("accept_draw")}>Принять</button><button onClick={() => drawAction("decline_draw")}>Отклонить</button></> : <button disabled={!online?.blackJoined || Boolean(online?.drawOfferedBy)} onClick={() => drawAction("offer_draw")}>{online?.drawOfferedBy ? "Ничья предложена" : "Предложить ничью"}</button>}</div>}
+            {mode === "online" && !gameResult && <div className="draw-actions">{online?.drawOfferedBy === session?.seat ? <span>Ожидаем ответ на предложение ничьей</span> : !online?.drawOfferedBy ? <button disabled={!online?.blackJoined} onClick={() => drawAction("offer_draw")}>Предложить ничью</button> : null}</div>}
+            {mode === "online" && !gameResult && online?.drawOfferedBy && online.drawOfferedBy !== session?.seat && <div className="decision-overlay" role="dialog" aria-modal="true" aria-label="Предложение ничьей"><div className="decision-card"><div className="decision-symbol">½</div><h2>Соперник предлагает ничью</h2><p>Партия завершится с результатом ½–½, если вы согласитесь.</p><div className="decision-actions"><button onClick={() => drawAction("decline_draw")}>Продолжить игру</button><button className="decision-primary" onClick={() => drawAction("accept_draw")}>Принять ничью</button></div></div></div>}
             <div className="moves-panel"><strong>Ходы партии</strong><div>{moves.length ? moves.map((item, index) => <span key={index}>{index % 2 === 0 ? Math.floor(index / 2) + 1 + ". " : ""}{item} </span>) : <small>Сделайте первый ход</small>}</div></div>
             {gameResult && dismissedResult !== gameResult && <div className={"result-overlay " + resultOutcome} role="dialog" aria-label="Итог партии"><div className="result-card">
               {resultOutcome === "draw" ? <div className="result-emblem">½</div> : <ResultAnimation outcome={resultOutcome} />}
@@ -770,7 +799,7 @@ export default function App() {
         {tab === "learn" && <Training lesson />}
 
         {tab === "profile" && (
-          <section className="page profile-page"><div className="profile-hero"><div className="avatar large">{guest ? avatarGlyph[guest.avatar] : "♞"}</div><div><h1>{guest?.name || "Гость"}{guest?.verified ? " ✓" : ""}</h1><p>{guest ? `${guest.rating} Эло · ${guest.ratedGames} рейтинговых партий` : "Выберите уровень и создайте профиль"}<br />Выбранный тренер: {coach}</p></div></div>
+          <section className="page profile-page"><div className="profile-hero"><div className="avatar large">{guest ? avatarGlyph[guest.avatar] : "♞"}</div><div><div className="verified-name"><h1>{guest?.name || "Гость"}</h1>{guest?.verified && <VerifiedBadge self />}</div><p>{guest ? `${guest.rating} Эло · ${guest.ratedGames} рейтинговых партий` : "Выберите уровень и создайте профиль"}<br />Выбранный тренер: {coach}</p></div></div>
             {guest ? <div className="card"><h2>Рейтинг онлайн</h2><p>{guest.gamesToLeaderboard ? `До таблицы рейтинга осталось ${guest.gamesToLeaderboard} партий с людьми.` : "Ваш рейтинг участвует в таблице."}<br />Побед: {guest.wins} · Поражений: {guest.losses} · Ничьих: {guest.draws}</p><button onClick={() => void findMatch()}>Найти соперника</button></div> : <div className="card guest-signup"><h2>Гостевой профиль</h2><input value={guestName} maxLength={24} onChange={event => setGuestName(event.target.value)} placeholder="Ваше имя" aria-label="Ваше имя" /><select value={guestLevel} onChange={event => setGuestLevel(event.target.value as Level)} aria-label="Ваш уровень"><option value="beginner">Начинающий · 400 Эло</option><option value="amateur">Любитель · 1000 Эло</option><option value="experienced">Опытный · 1500 Эло</option><option value="professional">Профессионал · 2000 Эло</option></select><div className="avatar-options" aria-label="Выберите аватар">{(Object.keys(avatarGlyph) as Avatar[]).map(choice => <button className={choice === guestAvatar ? "selected" : ""} type="button" key={choice} onClick={() => setGuestAvatar(choice)} aria-label={`Аватар ${choice}`}>{avatarGlyph[choice]}</button>)}</div><button onClick={() => void registerGuest()}>Создать профиль</button></div>}
             <div className="card leaderboard"><h2>Таблица рейтинга</h2>{leaderboard.length ? leaderboard.map((player, index) => <div key={player.id}><span>{index + 1}. {avatarGlyph[player.avatar]} {player.name}</span><strong>{player.rating} Эло</strong></div>) : <p>Пока нет игроков с десятью рейтинговыми партиями.</p>}</div>
             <h2>Тренеры</h2><p className="section-subtitle">Выберите стиль объяснений и реакций</p>
@@ -784,11 +813,11 @@ export default function App() {
       </main>
 
       {tab !== "play" && <nav className="bottom-nav" aria-label="Главная навигация">
-        {([["home", "⌂", "Главная"], ["newgame", "⚔", "Играть"], ["puzzles", "✥", "Задачи"], ["learn", "▱", "Обучение"], ["profile", "♟", "Профиль"]] as const).map(([key, icon, label]) =>
-          <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><span>{icon}</span><small>{label}</small></button>
+        {([["home", "home", "Главная"], ["newgame", "play", "Играть"], ["puzzles", "puzzles", "Задачи"], ["learn", "learn", "Обучение"], ["profile", "profile", "Профиль"]] as const).map(([key, icon, label]) =>
+          <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><UIIcon name={icon} /><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4" : reaction} muted={reactionMuted} unskippable={promoOpponent} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
+      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4" : reaction} muted={reactionMuted} unskippable={promoOpponent} onPlayed={() => { if (promoOpponent && session) localStorage.setItem("mchess.promoSeen.v2." + session.roomId, "1"); }} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
     </div>
   );
 }

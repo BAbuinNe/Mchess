@@ -20,7 +20,7 @@ const pieceName: Record<string, string> = {
 };
 
 function pieceUrl(color: string, type: string) {
-  return `/assets/pieces/livius/${color}${type}.svg?v=3`;
+  return `/assets/pieces/livius/${color}${type}.svg?v=4`;
 }
 
 export default function ChessBoard({ fen, onMove, side = "both", orientation = "w", lastMove, moveBadge, moveBadges, hintMove, compact = false }: Props) {
@@ -47,11 +47,11 @@ export default function ChessBoard({ fen, onMove, side = "both", orientation = "
       const origin = squareRects.current.get(lastMove!.from);
       const target = document.querySelector<HTMLElement>(`.board-grid [data-square="${lastMove!.to}"] .piece`);
       const destination = target?.getBoundingClientRect();
-      if (origin && destination && target?.animate) {
+      if (origin && destination && target?.animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         target.animate([
           { transform: `translate(${origin.left - destination.left}px, ${origin.top - destination.top}px) scale(.98)` },
           { transform: "translate(0, 0) scale(1)" }
-        ], { duration: 190, easing: "cubic-bezier(.2,.75,.25,1)" });
+        ], { duration: 150, easing: "cubic-bezier(.22,.78,.25,1)" });
       }
       lastAnimatedMove.current = signature;
     }

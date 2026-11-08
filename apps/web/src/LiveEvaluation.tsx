@@ -68,7 +68,7 @@ export function classify(before: EngineResult, after: EngineResult, move: Move, 
   return "good";
 }
 
-export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: string; active: boolean; onClassified?: (ply: number, kind: MoveKind, square: string, piece: string) => void }) {
+export default function LiveEvaluation({ pgn, active, onlyColor, showPanel = true, onClassified }: { pgn: string; active: boolean; onlyColor?: "w" | "b"; showPanel?: boolean; onClassified?: (ply: number, kind: MoveKind, square: string, piece: string) => void }) {
   const [value, setValue] = useState<Evaluation | null>(null);
   const [history, setHistory] = useState<Record<number, Evaluation>>({});
   const [busy, setBusy] = useState(false);
@@ -116,10 +116,10 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     const replay = new Chess();
     for (let index = 0; index < moves.length; index++) {
       const beforeFen = replay.fen();
-      replay.move(moves[index].san);
-      if (scheduled.current.has(index + 1)) continue;
-      const afterFen = replay.fen();
       const move = moves[index];
+      replay.move(move.san);
+      if (scheduled.current.has(index + 1) || (onlyColor && move.color !== onlyColor)) continue;
+      const afterFen = replay.fen();
       const ply = index + 1;
       scheduled.current.add(ply);
       running.current += 1;
@@ -148,7 +148,7 @@ export default function LiveEvaluation({ pgn, active, onClassified }: { pgn: str
     }
   }, [pgn, active]);
 
-  if (!active) return null;
+  if (!active || !showPanel) return null;
   const score = value?.score ?? 0;
   const whiteShare = Math.max(5, Math.min(95, 50 + 45 * Math.tanh(score / 400)));
   return <div className="live-evaluation" aria-live="polite">
