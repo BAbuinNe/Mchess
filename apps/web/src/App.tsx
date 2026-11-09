@@ -182,11 +182,12 @@ export default function App() {
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return;
     const listener = NativeApp.addListener("backButton", () => {
+      if (promoOpponent) return;
       if (tab === "home") void NativeApp.minimizeApp();
       else setTab("home");
     });
     return () => { void listener.then(handle => handle.remove()); };
-  }, [tab]);
+  }, [tab, promoOpponent]);
 
   useEffect(() => {
     if (!guestToken || !validApi(apiUrl)) return;
