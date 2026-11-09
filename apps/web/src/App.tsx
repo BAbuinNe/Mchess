@@ -44,9 +44,10 @@ type OnlineState = {
 };
 type Session = { roomId: string; seat: Seat; seatToken: string };
 
-const DEFAULT_API = window.location.port === "5173" && !Capacitor.isNativePlatform()
+const packagedOrigin = Capacitor.isNativePlatform() || (window.location.hostname === "localhost" && window.location.protocol === "https:");
+const DEFAULT_API = window.location.port === "5173" && !packagedOrigin
   ? `${window.location.protocol}//${window.location.hostname}:3001`
-  : Capacitor.isNativePlatform() ? "https://mchess-online.onrender.com" : window.location.origin;
+  : packagedOrigin ? "https://mchess-online.onrender.com" : window.location.origin;
 const botLevels = [200, 400, 600, 800, 1000, 1200, 1400, 1600, 1800, 2000, 2400, 2800];
 const coaches = [
   { name: "Магнус Карлсен", role: "Позиция и эндшпиль", image: "/assets/coaches/magnus-portrait.png" },
