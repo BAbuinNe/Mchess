@@ -218,7 +218,7 @@ export default function App() {
       busy = true;
       setSearchSeconds(Math.min(30, Math.floor((Date.now() - started) / 1000)));
       try {
-        const response = await fetch(apiUrl + "/api/matchmaking/" + matchTicket, { headers: { Authorization: `Bearer ${guestToken}` } });
+        const response = await fetch(apiUrl + "/api/matchmaking/" + matchTicket + "?t=" + Date.now(), { cache: "no-store", headers: { Authorization: `Bearer ${guestToken}` } });
         if (!response.ok) throw new Error("matchmaking_unavailable");
         const data = await response.json() as { status: "waiting" | "matched" | "bot"; session: Session | null; state: OnlineState | null };
         if (!active) return;
@@ -338,7 +338,7 @@ export default function App() {
         if (refreshing) return;
         refreshing = true;
         try {
-          const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId), { cache: "no-store" });
+          const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId) + "?t=" + Date.now(), { cache: "no-store" });
           if (!response.ok) throw new Error("room_unavailable");
           const state = await response.json() as OnlineState;
           if (!active) return;
