@@ -1,4 +1,4 @@
-import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
+import { get, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -22,10 +22,9 @@ async function read(): Promise<{ data: Data; etag?: string }> {
   const current = await get(PATH, { access: "private", useCache: false });
   if (!current || current.statusCode !== 200) return { data: empty() };
   const data = JSON.parse(await new Response(current.stream).text()) as Data;
-  const metadata = await head(PATH);
-  const normalizeEtag = (etag: string) => etag.replace(/^W\//, "").replaceAll('"', '');
-  if (!metadata || normalizeEtag(current.blob.etag) !== normalizeEtag(metadata.etag)) throw new Error("state_changed_during_read");
-  return { data, etag: metadata.etag };
+  // The conditional write checks this ETag, so a second metadata request adds
+  // latency without improving concurrency safety.
+  return { data, etag: current.blob.etag };
 }
 async function update(change: (data: Data) => { status: number; body: unknown; dirty?: boolean }): Promise<{ status: number; body: unknown }> {
   for (let attempt = 0; attempt < 8; attempt++) {

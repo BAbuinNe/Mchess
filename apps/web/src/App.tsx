@@ -333,6 +333,7 @@ export default function App() {
     if (hostedApi) {
       let active = true;
       let refreshing = false;
+      let timer: number | undefined;
       const refresh = async () => {
         if (refreshing) return;
         refreshing = true;
@@ -349,11 +350,13 @@ export default function App() {
           setOnline(state);
           setConnected(true);
         } catch { if (active) setConnected(false); }
-        finally { refreshing = false; }
+        finally {
+          refreshing = false;
+          if (active) timer = window.setTimeout(() => void refresh(), onlineRef.current?.turn === session.seat ? 950 : 350);
+        }
       };
       void refresh();
-      const interval = window.setInterval(() => void refresh(), 1200);
-      return () => { active = false; window.clearInterval(interval); };
+      return () => { active = false; window.clearTimeout(timer); };
     }
     const socket = new WebSocket(apiUrl.replace(/^http/, "ws") + "/ws/rooms/" + session.roomId + "?token=" + encodeURIComponent(session.seatToken));
     socketRef.current = socket;
