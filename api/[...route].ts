@@ -1,4 +1,4 @@
-import { get, put, BlobPreconditionFailedError } from "@vercel/blob";
+import { get, head, put, BlobPreconditionFailedError } from "@vercel/blob";
 import { Chess } from "chess.js";
 import { createHash, randomBytes } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -18,18 +18,20 @@ const avatars = new Set(["knight", "queen", "rook", "bishop", "king"]);
 const json = (res: ServerResponse, status: number, data: unknown) => { res.statusCode = status; res.setHeader("Content-Type", "application/json; charset=utf-8"); res.setHeader("Cache-Control", "no-store"); res.end(JSON.stringify(data)); };
 const publicGuest = (g: Guest) => ({ id: g.id, name: g.name, level: g.level, avatar: g.avatar, rating: g.rating, ratedGames: g.ratedGames, gamesToLeaderboard: Math.max(0, 10 - g.ratedGames), wins: g.wins, losses: g.losses, draws: g.draws, verified: Boolean(g.verified) });
 const auth = (data: Data, req: IncomingMessage) => data.guests.find(g => req.headers.authorization === `Bearer ${g.token}`);
-async function read(): Promise<{ data: Data; etag?: string }> {
+async function read(forUpdate = false): Promise<{ data: Data; etag?: string }> {
   const current = await get(PATH, { access: "private", useCache: false });
   if (!current || current.statusCode !== 200) return { data: empty() };
   const data = JSON.parse(await new Response(current.stream).text()) as Data;
-  // The conditional write checks this ETag, so a second metadata request adds
-  // latency without improving concurrency safety.
-  return { data, etag: current.blob.etag };
+  if (!forUpdate) return { data };
+  const metadata = await head(PATH);
+  const normalizeEtag = (etag: string) => etag.replace(/^W\//, "").replaceAll('"', '');
+  if (!metadata || normalizeEtag(current.blob.etag) !== normalizeEtag(metadata.etag)) throw new Error("state_changed_during_read");
+  return { data, etag: metadata.etag };
 }
 async function update(change: (data: Data) => { status: number; body: unknown; dirty?: boolean }): Promise<{ status: number; body: unknown }> {
   for (let attempt = 0; attempt < 8; attempt++) {
     let snapshot;
-    try { snapshot = await read(); } catch (error) { if (error instanceof Error && error.message === "state_changed_during_read") continue; throw error; }
+    try { snapshot = await read(true); } catch (error) { if (error instanceof Error && error.message === "state_changed_during_read") continue; throw error; }
     const { data, etag } = snapshot;
     const result = change(data);
     if (!result.dirty) return result;
