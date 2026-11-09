@@ -1,4 +1,4 @@
-const CACHE = "mchess-v5";
+const CACHE = "mchess-v6";
 const CORE = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/icon-512.png", "/engine/stockfish-19-lite-single.js", "/engine/stockfish-19-lite-single.wasm"];
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
