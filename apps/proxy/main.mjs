@@ -8,6 +8,11 @@ const upstream = "https://melchess.vercel.app";
 const mime = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".webmanifest": "application/manifest+json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".wasm": "application/wasm", ".ogg": "audio/ogg", ".mp3": "audio/mpeg" };
 
 async function proxy(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization,Content-Type");
+  res.setHeader("Access-Control-Max-Age", "600");
+  if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
   const chunks = [];
   let size = 0;
   for await (const chunk of req) {
