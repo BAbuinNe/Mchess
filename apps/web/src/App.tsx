@@ -35,6 +35,7 @@ type OnlineState = {
   check: boolean;
   result: string | null;
   clocks: Record<Seat, number>;
+  promoPendingFor?: Seat | null;
   incrementMs: number;
   drawOfferedBy: Seat | null;
   rated?: boolean;
@@ -98,7 +99,7 @@ export default function App() {
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [reaction, setReaction] = useState<string | null>(null);
   const [promoCode, setPromoCode] = useState("");
-  const [promoOpponent, setPromoOpponent] = useState(false);
+  const [promoRetry, setPromoRetry] = useState(0);
   const reactionQueue = useRef<string[]>([]);
   const reactionActive = useRef(false);
   const [videoEnabled, setVideoEnabled] = useState(() => localStorage.getItem("mchess.videoEnabled") !== "false");
@@ -132,6 +133,9 @@ export default function App() {
   const socketRef = useRef<WebSocket | null>(null);
   const onlineRef = useRef<OnlineState | null>(null);
   const pendingOnlineMove = useRef<number | null>(null);
+  const localPgnRef = useRef(localPgn);
+  localPgnRef.current = localPgn;
+  const botGeneration = useRef(0);
   useEffect(() => { pendingOnlineMove.current = null; }, [session?.roomId]);
   const badReactionIndex = useRef(0);
   const brilliantReactionIndex = useRef(0);
@@ -143,12 +147,7 @@ export default function App() {
   const localGameId = useRef(localStorage.getItem("mchess.localGameId") || crypto.randomUUID());
   const reactedPly = useRef(storedReactedPlies(localGameId.current));
 
-  useEffect(() => {
-    if (mode !== "online" || !session || !online?.blackJoined) return;
-    const rival = session.seat === "w" ? online.blackPlayer : online.whitePlayer;
-    const key = "mchess.promoSeen.v2." + session.roomId;
-    if (rival?.verified && !localStorage.getItem(key) && !promoOpponent) setPromoOpponent(true);
-  }, [mode, session, promoOpponent, online?.blackJoined, online?.whitePlayer?.verified, online?.blackPlayer?.verified]);
+  const promoOpponent = mode === "online" && !!session && online?.promoPendingFor === session.seat;
 
   useEffect(() => { if (mode !== "online") localStorage.setItem("mchess.lastLocalMode", mode); }, [mode]);
   useEffect(() => { localStorage.setItem("mchess.botLevel", String(botLevel)); }, [botLevel]);
@@ -392,17 +391,34 @@ export default function App() {
     }
   }
 
+  async function finishPromo() {
+    if (!session) return;
+    try {
+      const response = await fetch(apiUrl + "/api/rooms/" + encodeURIComponent(session.roomId) + "/action?token=" + encodeURIComponent(session.seatToken), {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: "promo_finished" })
+      });
+      if (!response.ok) throw new Error("Сервер не подтвердил окончание видео");
+      const state = await response.json() as OnlineState;
+      onlineRef.current = state;
+      setOnline(state);
+    } catch {
+      setNotice("Не удалось начать партию. Видео запустится повторно после проверки связи.");
+      setPromoRetry(value => value + 1);
+    }
+  }
+
   useEffect(() => {
     if (mode !== "bot" || local.turn() !== "b" || local.isGameOver()) return;
     let active = true;
+    const generation = ++botGeneration.current;
     const fen = local.fen();
     const startedThinking = performance.now();
     setBotThinking(true);
     void engine("play").search(fen, Math.round(botLevel * 20 / 11), 450).then(async result => {
       await new Promise(resolve => window.setTimeout(resolve, Math.max(0, 3000 - (performance.now() - startedThinking))));
-      if (!active) return;
+      if (!active || generation !== botGeneration.current) return;
       const full = new Chess();
-      if (localPgn) full.loadPgn(localPgn);
+      if (localPgnRef.current) full.loadPgn(localPgnRef.current);
       if (full.fen() !== fen) return;
       const legal = full.moves({ verbose: true });
       const elo = botLevels[botLevel];
@@ -415,7 +431,7 @@ export default function App() {
       localStorage.setItem("mchess.localPgn", full.pgn());
     }).catch(() => { if (active) setNotice("Движок Stockfish не загрузился. Обновите страницу."); })
       .finally(() => { if (active) setBotThinking(false); });
-    return () => { active = false; };
+    return () => { active = false; botGeneration.current++; };
   }, [mode, localPgn, botLevel, coach]);
 
   useEffect(() => {
@@ -533,6 +549,8 @@ export default function App() {
 
   function startBot() {
     if (matchTicket) void cancelMatch();
+    botGeneration.current++;
+    localPgnRef.current = "";
     setLocalPgn("");
     localStorage.removeItem("mchess.localPgn");
     window.history.replaceState({}, "", window.location.pathname);
@@ -553,6 +571,8 @@ export default function App() {
   }
 
   function newLocal() {
+    botGeneration.current++;
+    localPgnRef.current = "";
     setLocalPgn("");
     localStorage.removeItem("mchess.localPgn");
     resetReactionHistory();
@@ -562,12 +582,14 @@ export default function App() {
   function undoMove() {
     if (mode === "online") return;
     const game = new Chess();
-    if (localPgn) game.loadPgn(localPgn);
+    if (localPgnRef.current) game.loadPgn(localPgnRef.current);
     if (!game.history().length) return;
+    botGeneration.current++;
     setBotThinking(false);
     game.undo();
     if (mode === "bot" && game.turn() === "b" && game.history().length) game.undo();
     const pgn = game.pgn();
+    localPgnRef.current = pgn;
     setLocalPgn(pgn);
     localStorage.setItem("mchess.localPgn", pgn);
     setMoveBadges([]);
@@ -595,7 +617,7 @@ export default function App() {
 
   function move(from: Square, to: Square, promotion?: string) {
     if (mode === "online") {
-      if (!connected || !session || !online || online.turn !== session.seat || online.result || pendingOnlineMove.current !== null) return;
+      if (!connected || !session || !online || online.promoPendingFor || online.turn !== session.seat || online.result || pendingOnlineMove.current !== null) return;
       const message = { type: "move", from, to, promotion, clientMoveId: crypto.randomUUID() };
       if (hostedApi) {
         try {
@@ -620,6 +642,7 @@ export default function App() {
       setHintMove(null);
       setMoveBadges([]);
       const pgn = local.pgn();
+      localPgnRef.current = pgn;
       setLocalPgn(pgn);
       localStorage.setItem("mchess.localPgn", pgn);
       if (checkedBefore && movingPiece !== "k" && !local.isCheck()) enqueueReaction("/assets/reactions/events/check-block.mp4", true);
@@ -695,7 +718,7 @@ export default function App() {
     }
   }
 
-  const board = <ChessBoard fen={currentFen} onMove={move} side={mode === "online" ? session?.seat : mode === "bot" ? "w" : "both"} orientation={orientation} lastMove={lastMove} moveBadges={moveBadges.filter(item => item.ply <= moves.length).map(({ square, kind }) => ({ square, kind }))} hintMove={hintMove} />;
+  const board = <ChessBoard fen={currentFen} onMove={mode === "online" && online?.promoPendingFor ? undefined : move} side={mode === "online" ? session?.seat : mode === "bot" ? "w" : "both"} orientation={orientation} lastMove={lastMove} moveBadges={moveBadges.filter(item => item.ply <= moves.length).map(({ square, kind }) => ({ square, kind }))} hintMove={hintMove} />;
   const coachImage = coaches.find(item => item.name === coach)?.image;
   const playerLine = (color: Seat, bottom: boolean) => (
     <div className="player-line">
@@ -821,7 +844,7 @@ export default function App() {
           <button key={key} className={tab === key ? "active" : ""} onClick={() => setTab(key)}><UIIcon name={icon} /><small>{label}</small></button>
         )}
       </nav>}
-      <CoachReaction clip={promoOpponent ? "/assets/reactions/events/promo-opponent.mp4?v=2" : reaction} muted={reactionMuted} unskippable={promoOpponent} onPlayed={() => { if (promoOpponent && session) localStorage.setItem("mchess.promoSeen.v2." + session.roomId, "1"); }} onClose={() => { if (promoOpponent) setPromoOpponent(false); else finishReaction(); }} />
+      <CoachReaction clip={promoOpponent ? `/assets/reactions/events/promo-opponent.mp4?v=3&retry=${promoRetry}` : reaction} muted={promoOpponent ? false : reactionMuted} unskippable={promoOpponent} fullScreen={promoOpponent} onClose={() => { if (promoOpponent) void finishPromo(); else finishReaction(); }} />
     </div>
   );
 }
