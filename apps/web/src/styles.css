@@ -165,8 +165,24 @@ h2 { font-size: 24px; margin: 0 0 12px; }
 .training-tabs { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px; }
 .training-tabs button { flex: 0 0 auto; border: 1px solid #5a4c3d; border-radius: 12px; padding: 10px 14px; background: #292623; color: #d7c6ab; }
 .training-tabs button.active { background: #426438; border-color: #8fb874; color: #f6f1e2; }
+.course-tabs { display: flex; gap: 9px; overflow-x: auto; padding: 3px 2px 10px; scrollbar-width: thin; }
+.course-tabs button { display: flex; flex-direction: column; gap: 4px; flex: 0 0 158px; min-height: 64px; text-align: left; padding: 10px 12px; border: 1px solid #554d42; border-radius: 14px; background: #2c2b28; color: #e8e3d7; }
+.course-tabs button.active { border-color: #9ac274; background: #344735; box-shadow: inset 0 0 0 1px #78a45e; }
+.course-tabs small { color: #cbbf9e; }
+.puzzle-picker { display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; }
+.puzzle-picker button { min-width: 0; min-height: 39px; border: 1px solid #5e5547; border-radius: 10px; background: #302d29; color: #e9e1d0; font-weight: 700; }
+.puzzle-picker button.solved { color: #aee08a; }
+.puzzle-picker button.active { border-color: #b6d58d; background: #3e5a36; color: #fff; }
+@media (max-width: 620px) { .puzzle-picker { grid-template-columns: repeat(5, minmax(0, 1fr)); } .puzzle-picker button { min-height: 43px; } }
+.training-source { color: #bfb8a9; font-size: 13px; text-align: center; }
+.training-source a { color: #aee08a; }
 .training-intro { margin-top: 8px; }
 .training-intro h2 { margin-top: 8px; }
+.theory-step { border-color: #71644b; background: linear-gradient(150deg, #333329, #292923); }
+.theory-step h2 { margin: 8px 0; }
+.theory-step button { min-height: 42px; padding: 8px 14px; border: 1px solid #9ab978; border-radius: 10px; background: #45663a; color: #fff; font-weight: 700; }
+.theory-step button:disabled { opacity: .7; }
+.theory-step small { display: block; margin-top: 10px; color: #c7beaa; }
 .training-feedback { padding: 16px; margin: 14px 0; border: 1px solid #a96d61; border-radius: 14px; background: #49302b; color: #f5ddd6; }
 .training-feedback.success { border-color: #83b36e; background: #2d4930; color: #e5f3dc; }
 .training-page .quick-actions { grid-template-columns: repeat(2, 1fr); margin-top: 16px; }
