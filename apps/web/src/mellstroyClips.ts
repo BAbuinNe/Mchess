@@ -11,6 +11,14 @@ const brilliant = ["meme-20", "meme-21", "meme-23", "meme-33"];
 const pools = { positive, negative, general, brilliant };
 type Group = keyof typeof pools;
 const decks: Partial<Record<Group, string[]>> = {};
+const recentKey = "mchess.mellstroyRecentClips";
+
+function recentClips(): string[] {
+  try {
+    const value = JSON.parse(localStorage.getItem(recentKey) || "[]");
+    return Array.isArray(value) ? value.filter((id): id is string => typeof id === "string").slice(-8) : [];
+  } catch { return []; }
+}
 
 function draw(group: Group) {
   if (!decks[group]) {
@@ -27,17 +35,30 @@ function draw(group: Group) {
     }
     decks[group] = shuffled;
   }
+  // The brilliant and positive pools overlap. Avoid showing the same clip
+  // again just because the next move belongs to another group.
+  const recent = recentClips();
+  let unseenIndex = -1;
+  for (let index = decks[group]!.length - 1; index >= 0; index--) {
+    if (!recent.includes(decks[group]![index])) { unseenIndex = index; break; }
+  }
+  if (unseenIndex >= 0 && unseenIndex !== decks[group]!.length - 1) {
+    const [unseen] = decks[group]!.splice(unseenIndex, 1);
+    decks[group]!.push(unseen);
+  }
   const clip = decks[group]!.pop()!;
-  try { localStorage.setItem(`mchess.mellstroyDeck.${group}`, JSON.stringify(decks[group])); } catch { /* local storage may be unavailable */ }
+  try {
+    localStorage.setItem(`mchess.mellstroyDeck.${group}`, JSON.stringify(decks[group]));
+    localStorage.setItem(recentKey, JSON.stringify([...recent, clip].slice(-8)));
+  } catch { /* local storage may be unavailable */ }
   return clip;
 }
 
 export function nextMellstroyClip(kind: MoveKind): string {
-  const previous = Number(localStorage.getItem("mchess.mellstroyReactionCount") || 0);
-  const count = Number.isFinite(previous) ? previous + 1 : 1;
-  localStorage.setItem("mchess.mellstroyReactionCount", String(count));
-  const group: Group = kind === "brilliant" ? "brilliant" : count % 2 === 0 ? "general" :
-    ["inaccuracy", "mistake", "blunder", "missed-win"].includes(kind) ? "negative" : "positive";
+  const group: Group = kind === "brilliant" ? "brilliant" :
+    ["inaccuracy", "mistake", "blunder", "missed-win"].includes(kind) ? "negative" :
+      ["good", "excellent", "best", "great"].includes(kind) ? "positive" : "general";
   const selected = draw(group);
   return selected.startsWith("legacy:") ? `/assets/reactions/${selected.slice(7)}.webm` : `/assets/reactions/mellstroy/${selected}.webm`;
 }
+
